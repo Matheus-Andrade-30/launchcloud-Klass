@@ -6,7 +6,7 @@
 
 
 * **RNF-02: Escalabilidade e Disponibilidade**
-* **Requisito:** O backend hospedado na AWS, utilizando Lambda, deve garantir uma disponibilidade de 99,9% e ser capaz de suportar picos de acesso simultâneo.
+* **Requisito:** O backend hospedado na AWS, utilizando Lambda e EC2, deve garantir uma disponibilidade de 99,9% e ser capaz de suportar picos de acesso simultâneo.
 * **Justificativa:** Plataformas educacionais costumam sofrer com grandes picos de tráfego em momentos específicos, como no início das aulas ou nos prazos finais para a entrega de trabalhos práticos. A arquitetura precisa garantir que o sistema se mantenha acessível e não saia do ar durante essas janelas críticas de avaliação.
 
 
