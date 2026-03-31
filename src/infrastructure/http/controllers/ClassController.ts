@@ -26,7 +26,7 @@ export class ClassController {
 
   async getById(req: Request, res: Response): Promise<void> {
     try {
-      const cls = await this.getClassByIdUseCase.execute(req.params.id);
+      const cls = await this.getClassByIdUseCase.execute(req.params.id as string);
       res.status(200).json(cls);
     } catch (error) {
       res.status(404).json({ error: (error as Error).message });
