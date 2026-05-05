@@ -31,4 +31,29 @@ export class MySQLClassRepository implements IClassRepository {
     const r = rows[0];
     return new Class(r.id, r.title, r.description, r.teacher_id, r.created_at);
   }
+
+  async update(
+    id: string,
+    data: Partial<Pick<Class, 'title' | 'description'>>,
+  ): Promise<Class | null> {
+    const fields: string[] = [];
+    const values: string[] = [];
+    if (data.title !== undefined) {
+      fields.push('title = ?');
+      values.push(data.title);
+    }
+    if (data.description !== undefined) {
+      fields.push('description = ?');
+      values.push(data.description);
+    }
+    if (fields.length === 0) return this.findById(id);
+    values.push(id);
+    await pool.execute(`UPDATE classes SET ${fields.join(', ')} WHERE id = ?`, values);
+    return this.findById(id);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const [result] = await pool.execute('DELETE FROM classes WHERE id = ?', [id]);
+    return (result as { affectedRows: number }).affectedRows > 0;
+  }
 }

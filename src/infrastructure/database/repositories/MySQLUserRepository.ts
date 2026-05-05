@@ -38,4 +38,33 @@ export class MySQLUserRepository implements IUserRepository {
     const r = rows[0];
     return new User(r.id, r.name, r.email, r.role, r.created_at);
   }
+
+  async update(
+    id: string,
+    data: Partial<Pick<User, 'name' | 'email' | 'role'>>,
+  ): Promise<User | null> {
+    const fields: string[] = [];
+    const values: string[] = [];
+    if (data.name !== undefined) {
+      fields.push('name = ?');
+      values.push(data.name);
+    }
+    if (data.email !== undefined) {
+      fields.push('email = ?');
+      values.push(data.email);
+    }
+    if (data.role !== undefined) {
+      fields.push('role = ?');
+      values.push(data.role);
+    }
+    if (fields.length === 0) return this.findById(id);
+    values.push(id);
+    await pool.execute(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+    return this.findById(id);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const [result] = await pool.execute('DELETE FROM users WHERE id = ?', [id]);
+    return (result as { affectedRows: number }).affectedRows > 0;
+  }
 }

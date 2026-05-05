@@ -1,0 +1,578 @@
+================================================================================
+  KLASS — LAUNCHCLOUD PROJECT
+  GUIA COMPLETO DE CONFIGURAÇÃO AWS
+  IBMEC — Projeto de Cloud Computing 2026
+================================================================================
+
+Este guia cobre a configuração de todos os serviços AWS necessários para o
+projeto Klass nas Entregas 2, 3 e 4. Siga os passos na ordem indicada.
+
+PRÉ-REQUISITOS
+--------------
+- Conta AWS com Free Tier ativa
+- AWS CLI instalado e configurado (aws configure)
+- Node.js 18+ instalado na máquina local
+- Repositório clonado: git clone https://github.com/Matheus-Andrade-30/launchcloud-Klass.git
+
+================================================================================
+ENTREGA 2 — RDS (Banco de Dados) + EC2 (Deploy)
+================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 1 — CRIAR BANCO DE DADOS (Amazon RDS — MySQL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.1. Acesse: AWS Console → RDS → "Create database"
+
+1.2. Configurações:
+     - Engine: MySQL
+     - Version: MySQL 8.0
+     - Template: Free tier
+     - DB instance identifier: klass-db
+     - Master username: admin
+     - Master password: <defina uma senha forte, ex: KlassDB2026!>
+     - DB instance class: db.t3.micro (Free Tier)
+     - Storage: 20 GB GP2
+     - Multi-AZ: NÃO (Free Tier não cobre)
+     - VPC: Default VPC
+     - Public access: YES (necessário para a EC2 acessar)
+     - VPC security group: Create new → nome: klass-rds-sg
+     - Database name: klass
+
+1.3. Configurar Security Group do RDS:
+     - Vá em EC2 → Security Groups → encontre "klass-rds-sg"
+     - Inbound rules → Add rule:
+       Type: MySQL/Aurora | Port: 3306 | Source: 0.0.0.0/0
+       (Em produção real, restrinja ao IP da EC2 — 0.0.0.0/0 é só para desenvolvimento)
+
+1.4. Aguarde o RDS ficar com status "Available" (~5-10 minutos)
+
+1.5. Anote o "Endpoint" do RDS:
+     Exemplo: klass-db.abc123xyz.us-east-1.rds.amazonaws.com
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 2 — CRIAR INSTÂNCIA EC2 (Servidor da Aplicação)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1. Acesse: AWS Console → EC2 → "Launch instance"
+
+2.2. Configurações:
+     - Name: klass-server
+     - AMI: Amazon Linux 2023 (Free Tier eligible)
+     - Instance type: t2.micro ou t3.micro (Free Tier)
+     - Key pair: Create new key pair → nome: klass-keypair → baixe o .pem
+     - Network: Default VPC
+     - Security group: Create new → nome: klass-ec2-sg
+       Inbound rules:
+         - SSH   | Port 22   | Source: Meu IP (seu IP atual)
+         - HTTP  | Port 80   | Source: 0.0.0.0/0
+         - Custom TCP | Port 3000 | Source: 0.0.0.0/0
+     - Storage: 8 GB (padrão)
+
+2.3. Clique em "Launch instance" e aguarde ficar "Running"
+
+2.4. Anote o "Public IPv4 address" da instância
+     Exemplo: 54.123.45.67
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 3 — CONFIGURAR A EC2 E FAZER DEPLOY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3.1. Conecte na instância via SSH:
+     chmod 400 klass-keypair.pem
+     ssh -i klass-keypair.pem ec2-user@<PUBLIC_IP>
+
+3.2. Instalar Node.js na EC2:
+     curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+     sudo yum install -y nodejs
+     node --version  # Deve mostrar v20.x
+
+3.3. Instalar PM2 (gerenciador de processos) e Git:
+     sudo npm install -g pm2
+     sudo yum install -y git
+
+3.4. Clonar o repositório:
+     git clone https://github.com/Matheus-Andrade-30/launchcloud-Klass.git
+     cd launchcloud-Klass
+
+3.5. Instalar yarn:
+     sudo npm install -g yarn
+
+3.6. Instalar dependências:
+     yarn install --production=false
+
+3.7. Criar arquivo .env com as credenciais:
+     nano .env
+
+     Cole o conteúdo abaixo (substitua pelos seus valores reais):
+     ---------------------------------------------------------------
+     PORT=3000
+     DB_HOST=<ENDPOINT_DO_RDS>
+     DB_PORT=3306
+     DB_USER=admin
+     DB_PASSWORD=KlassDB2026!
+     DB_NAME=klass
+     AWS_REGION=us-east-1
+     AWS_ACCESS_KEY_ID=<SEU_ACCESS_KEY>
+     AWS_SECRET_ACCESS_KEY=<SEU_SECRET_KEY>
+     S3_BUCKET_NAME=klass-materials
+     LAMBDA_CERTIFICATE_FUNCTION=klass-generate-certificate
+     ---------------------------------------------------------------
+     Salve: Ctrl+X → Y → Enter
+
+3.8. Compilar o TypeScript:
+     yarn build
+
+3.9. Iniciar com PM2:
+     pm2 start dist/infrastructure/http/server.js --name klass-api
+     pm2 startup  # Para iniciar automaticamente ao reiniciar a EC2
+     pm2 save
+
+3.10. Verificar se está rodando:
+      pm2 status
+      curl http://localhost:3000/health
+
+3.11. A URL pública da API será:
+      http://<PUBLIC_IP>:3000
+      Exemplo: http://54.123.45.67:3000/health
+
+3.12. Para atualizar após mudanças no código:
+      git pull
+      yarn build
+      pm2 restart klass-api
+
+================================================================================
+ENTREGA 3 — S3 (Materiais) + API GATEWAY (Ponto de Entrada)
+================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 4 — CRIAR BUCKET S3 (Armazenamento de Materiais)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1. Acesse: AWS Console → S3 → "Create bucket"
+
+4.2. Configurações:
+     - Bucket name: klass-materials (deve ser único globalmente!)
+       Se o nome estiver ocupado, use: klass-materials-2026-<seu_nome>
+     - AWS Region: us-east-1 (mesma região da EC2 e RDS)
+     - Object Ownership: ACLs disabled (recomendado)
+     - Block Public Access: MANTER BLOQUEADO (usaremos presigned URLs)
+     - Versioning: Disabled
+     - Encryption: SSE-S3 (padrão)
+
+4.3. Criar pastas organizacionais (opcional mas recomendado):
+     - Dentro do bucket, crie as "pastas" (prefixos):
+       materials/
+       certificates/
+
+4.4. Configurar CORS no bucket (necessário para o Swagger UI funcionar):
+     - Vá no bucket → Permissions → CORS configuration
+     - Cole o JSON abaixo:
+
+     [
+       {
+         "AllowedHeaders": ["*"],
+         "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
+         "AllowedOrigins": ["*"],
+         "ExposeHeaders": ["ETag"]
+       }
+     ]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 5 — CRIAR USUÁRIO IAM PARA A APLICAÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5.1. Acesse: AWS Console → IAM → Users → "Create user"
+
+5.2. Configurações:
+     - User name: klass-app-user
+     - Access type: Programmatic access (AWS CLI/SDK)
+
+5.3. Permissions (Attach policies directly):
+     Adicione as políticas:
+     - AmazonS3FullAccess (para S3 — materiais e certificados)
+     - AmazonRDSFullAccess (opcional, apenas se necessário)
+     - AWSLambdaRole (para invocar Lambda)
+
+5.4. Finalize e SALVE as credenciais:
+     - Access Key ID: AKIA...
+     - Secret Access Key: <chave secreta>
+
+     ⚠️ ATENÇÃO: Esta é a única vez que você verá a Secret Access Key!
+     Salve em local seguro. NUNCA commite essas credenciais no Git!
+
+5.5. Atualize o arquivo .env na EC2 com as novas credenciais:
+     SSH na EC2 → nano .env → atualize AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 6 — CONFIGURAR AMAZON API GATEWAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+6.1. Acesse: AWS Console → API Gateway → "Create API"
+
+6.2. Escolha: REST API → Build
+
+6.3. Configurações:
+     - Protocol: REST
+     - Create new API: New API
+     - API name: klass-api-gateway
+     - Endpoint Type: Regional
+
+6.4. Criar recurso proxy:
+     - Actions → Create Resource
+     - Marque: "Configure as proxy resource"
+     - Resource Name: {proxy+}
+     - Resource Path: {proxy+}
+     - CORS habilitado: SIM
+
+6.5. Configurar integração HTTP Proxy:
+     - Integration type: HTTP Proxy
+     - HTTP method: ANY
+     - Endpoint URL: http://<PUBLIC_IP_EC2>:3000/{proxy}
+     - Exemplo: http://54.123.45.67:3000/{proxy}
+
+6.6. Criar também o recurso raiz (/):
+     - Selecione o recurso raiz "/"
+     - Actions → Create Method → ANY
+     - Integration type: HTTP Proxy
+     - Endpoint URL: http://<PUBLIC_IP_EC2>:3000/
+
+6.7. Habilitar CORS:
+     - Selecione cada recurso criado
+     - Actions → Enable CORS
+     - Access-Control-Allow-Origin: '*'
+     - Clique em "Enable CORS and replace existing CORS headers"
+
+6.8. Deploy da API:
+     - Actions → Deploy API
+     - Deployment stage: New Stage
+     - Stage name: prod
+     - Clique em "Deploy"
+
+6.9. Anote a URL gerada:
+     Exemplo: https://abc123def.execute-api.us-east-1.amazonaws.com/prod
+
+6.10. Teste:
+      curl https://abc123def.execute-api.us-east-1.amazonaws.com/prod/health
+
+      Deve retornar: {"status":"OK","timestamp":"..."}
+
+6.11. O Swagger UI estará acessível em:
+      https://abc123def.execute-api.us-east-1.amazonaws.com/prod/api-docs
+
+================================================================================
+ENTREGA 4 — AWS LAMBDA (Geração de Certificados PDF)
+================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASSO 7 — CRIAR FUNÇÃO LAMBDA PARA GERAÇÃO DE CERTIFICADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+7.1. Acesse: AWS Console → Lambda → "Create function"
+
+7.2. Configurações:
+     - Function name: klass-generate-certificate
+     - Runtime: Node.js 20.x
+     - Architecture: x86_64
+     - Execution role: Create a new role with basic Lambda permissions
+
+7.3. Adicionar permissão S3 ao role da Lambda:
+     - Vá em IAM → Roles → encontre o role criado pela Lambda
+     - Attach policy: AmazonS3FullAccess
+
+7.4. Criar o código da Lambda localmente:
+     Crie uma pasta: mkdir lambda-certificate && cd lambda-certificate
+
+     Crie package.json:
+     {
+       "name": "klass-generate-certificate",
+       "version": "1.0.0",
+       "dependencies": {
+         "pdfkit": "^0.15.0",
+         "@aws-sdk/client-s3": "^3.0.0"
+       }
+     }
+
+     Execute: npm install
+
+7.5. Crie o arquivo index.js com o seguinte código:
+
+     const PDFDocument = require('pdfkit');
+     const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+
+     const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+
+     exports.handler = async (event) => {
+       const { certificateId, studentName, className, enrollmentId, s3Key, s3Bucket } = event;
+
+       return new Promise((resolve, reject) => {
+         const doc = new PDFDocument({ size: 'A4', layout: 'landscape' });
+         const chunks = [];
+
+         doc.on('data', (chunk) => chunks.push(chunk));
+         doc.on('end', async () => {
+           try {
+             const pdfBuffer = Buffer.concat(chunks);
+
+             await s3.send(new PutObjectCommand({
+               Bucket: s3Bucket,
+               Key: s3Key,
+               Body: pdfBuffer,
+               ContentType: 'application/pdf',
+             }));
+
+             resolve({
+               statusCode: 200,
+               body: JSON.stringify({
+                 certificateId,
+                 s3Key,
+                 message: 'Certificate generated successfully',
+               }),
+             });
+           } catch (err) {
+             reject(err);
+           }
+         });
+
+         doc.on('error', reject);
+
+         // Layout do certificado
+         doc.rect(0, 0, doc.page.width, doc.page.height).fill('#f0f4ff');
+         doc.rect(20, 20, doc.page.width - 40, doc.page.height - 40)
+            .lineWidth(3).stroke('#1a3c8f');
+
+         doc.fillColor('#1a3c8f')
+            .fontSize(36).font('Helvetica-Bold')
+            .text('CERTIFICADO DE CONCLUSÃO', { align: 'center' })
+            .moveDown(0.5);
+
+         doc.fillColor('#333333')
+            .fontSize(18).font('Helvetica')
+            .text('Certificamos que', { align: 'center' })
+            .moveDown(0.3);
+
+         doc.fillColor('#1a3c8f')
+            .fontSize(28).font('Helvetica-Bold')
+            .text(studentName, { align: 'center' })
+            .moveDown(0.3);
+
+         doc.fillColor('#333333')
+            .fontSize(18).font('Helvetica')
+            .text('concluiu com êxito o curso de', { align: 'center' })
+            .moveDown(0.3);
+
+         doc.fillColor('#1a3c8f')
+            .fontSize(22).font('Helvetica-Bold')
+            .text(className, { align: 'center' })
+            .moveDown(1);
+
+         doc.fillColor('#555555')
+            .fontSize(12).font('Helvetica')
+            .text(`Certificado ID: ${certificateId}`, { align: 'center' })
+            .text(`Data de emissão: ${new Date().toLocaleDateString('pt-BR')}`, { align: 'center' });
+
+         doc.fillColor('#1a3c8f')
+            .fontSize(14).font('Helvetica-Bold')
+            .text('Klass — Plataforma de Educação', 0, doc.page.height - 60, { align: 'center' });
+
+         doc.end();
+       });
+     };
+
+7.6. Empacotar e enviar para a Lambda:
+     zip -r certificate-lambda.zip index.js node_modules/
+
+     Via AWS Console:
+     - Na função Lambda, clique em "Upload from" → ".zip file"
+     - Faça upload do arquivo certificate-lambda.zip
+
+     OU via AWS CLI:
+     aws lambda update-function-code \
+       --function-name klass-generate-certificate \
+       --zip-file fileb://certificate-lambda.zip \
+       --region us-east-1
+
+7.7. Configurar variáveis de ambiente da Lambda:
+     - Lambda → Configuration → Environment variables
+     - Add:  AWS_REGION = us-east-1
+     - Add:  S3_BUCKET_NAME = klass-materials
+
+7.8. Configurar timeout:
+     - Lambda → Configuration → General configuration
+     - Timeout: 30 seconds (geração de PDF pode demorar um pouco)
+     - Memory: 256 MB
+
+7.9. Testar a Lambda:
+     - Clique em "Test" → Create new test event
+     - Nome do evento: TestCertificate
+     - JSON do evento:
+     {
+       "certificateId": "test-cert-001",
+       "studentName": "Lucas Oliveira",
+       "className": "Programação Web",
+       "enrollmentId": "e-5",
+       "s3Key": "certificates/test/test-cert-001.pdf",
+       "s3Bucket": "klass-materials"
+     }
+     - Clique em "Test" e verifique se o PDF foi criado no S3
+
+7.10. Fluxo integrado:
+      POST /certificates/enrollment/{enrollmentId}
+      → Backend invoca a Lambda com os dados
+      → Lambda gera PDF e salva no S3
+      → Backend retorna presigned URL para download
+
+================================================================================
+VARIÁVEIS DE AMBIENTE — RESUMO DO ARQUIVO .env
+================================================================================
+
+Crie/atualize o arquivo .env na raiz do projeto com:
+
+PORT=3000
+DB_HOST=<ENDPOINT_RDS>.rds.amazonaws.com
+DB_PORT=3306
+DB_USER=admin
+DB_PASSWORD=<SUA_SENHA_RDS>
+DB_NAME=klass
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=<ACCESS_KEY_DO_IAM>
+AWS_SECRET_ACCESS_KEY=<SECRET_KEY_DO_IAM>
+S3_BUCKET_NAME=klass-materials
+LAMBDA_CERTIFICATE_FUNCTION=klass-generate-certificate
+
+⚠️ NUNCA adicione o arquivo .env ao Git! Ele já está no .gitignore.
+
+================================================================================
+ENDPOINTS DISPONÍVEIS NA API
+================================================================================
+
+Health:
+  GET  /health                              → Status da aplicação
+
+Usuários (RF-01):
+  GET  /users                               → Listar todos
+  POST /users                               → Criar usuário
+  GET  /users/:id                           → Buscar por ID
+  PUT  /users/:id                           → Atualizar
+  DELETE /users/:id                         → Remover
+
+Turmas (RF-02):
+  GET  /classes                             → Listar todas
+  POST /classes                             → Criar turma (somente professor)
+  GET  /classes/:id                         → Buscar por ID
+  PUT  /classes/:id                         → Atualizar
+  DELETE /classes/:id                       → Remover
+
+Matrículas (RF-03):
+  GET  /enrollments                         → Listar todas
+  POST /enrollments                         → Matricular aluno
+  GET  /enrollments/:id                     → Buscar por ID
+  PATCH /enrollments/:id/status             → Atualizar status
+  DELETE /enrollments/:id                   → Cancelar matrícula
+
+Materiais no S3 (RF-04, RF-05):
+  GET  /materials                           → Listar todos
+  POST /materials                           → Upload de arquivo para S3
+  GET  /materials/:id                       → Obter material + presigned URL
+  GET  /materials/class/:classId            → Materiais de uma turma
+
+Notas e Frequência (RF-08):
+  GET  /grades                              → Listar todas
+  POST /grades                              → Registrar nota (somente professor)
+  GET  /grades/:id                          → Buscar por ID
+  GET  /grades/enrollment/:enrollmentId     → Notas de uma matrícula
+
+Certificados via Lambda (RF-06):
+  POST /certificates/enrollment/:enrollmentId → Gerar certificado (matrícula concluída)
+  GET  /certificates/:id                    → Obter certificado + presigned URL
+
+Swagger UI:
+  GET  /api-docs                            → Documentação interativa
+
+================================================================================
+ESTIMATIVA DE CUSTOS MENSAIS (Free Tier — Uso Acadêmico)
+================================================================================
+
+Serviço              | Uso Free Tier         | Custo após Free Tier
+---------------------|----------------------|----------------------
+EC2 t2.micro         | 750h/mês (12 meses)  | ~$8.50/mês
+RDS db.t3.micro      | 750h/mês (12 meses)  | ~$12.50/mês
+S3                   | 5 GB armazenamento    | ~$0.023/GB/mês
+Lambda               | 1M invocações/mês     | ~$0.20/1M invocações
+API Gateway          | 1M chamadas/mês       | ~$3.50/1M chamadas
+CloudWatch Logs      | 5 GB/mês              | ~$0.50/GB
+
+Total estimado (Free Tier): ~$0/mês
+Total estimado (pós Free Tier, uso baixo): ~$25-35/mês
+
+⚠️ Configure AWS Budgets com alerta em $5/mês:
+   AWS Console → Billing → Budgets → Create budget
+   Budget amount: $5 | Alert at 80%
+
+================================================================================
+ARQUITETURA DE SERVIÇOS AWS
+================================================================================
+
+[Cliente/Swagger UI]
+        ↓
+[Amazon API Gateway]  ← ponto de entrada público com CORS habilitado
+        ↓
+[Amazon EC2 (t2.micro)] ← aplicação Node.js/Express rodando com PM2
+        ↓              ↓                    ↓
+[Amazon RDS MySQL]  [Amazon S3]        [AWS Lambda]
+(banco de dados)    (materiais/        (geração de
+                     certificados)      certificados PDF)
+        ↓
+[Amazon CloudWatch] ← logs e monitoramento
+
+================================================================================
+COMANDOS ÚTEIS NA EC2
+================================================================================
+
+# Ver logs da aplicação
+pm2 logs klass-api
+
+# Reiniciar aplicação
+pm2 restart klass-api
+
+# Ver status
+pm2 status
+
+# Atualizar código após push no GitHub
+cd ~/launchcloud-Klass && git pull && yarn build && pm2 restart klass-api
+
+# Ver uso de CPU/memória
+pm2 monit
+
+================================================================================
+CHECKLIST DE VERIFICAÇÃO ANTES DAS AVALIAÇÕES
+================================================================================
+
+Entrega 2:
+[ ] RDS MySQL "Available" e acessível
+[ ] EC2 rodando com PM2
+[ ] GET  http://<IP>:3000/health → { "status": "OK" }
+[ ] POST http://<IP>:3000/users → cria usuário
+[ ] GET  http://<IP>:3000/users → lista usuários (>= 10 registros)
+[ ] GET  http://<IP>:3000/users/:id → retorna usuário por ID
+[ ] Diagrama ER documentado
+
+Entrega 3:
+[ ] API Gateway configurado e funcionando
+[ ] GET  https://<API_GW>/prod/health → { "status": "OK" }
+[ ] GET  https://<API_GW>/prod/api-docs → Swagger UI carrega
+[ ] POST https://<API_GW>/prod/materials → upload de arquivo no S3
+[ ] GET  https://<API_GW>/prod/materials/:id → retorna presigned URL
+[ ] Todos os endpoints documentados no Swagger funcionam
+
+Entrega 4:
+[ ] Lambda "klass-generate-certificate" criada e testada
+[ ] POST /certificates/enrollment/:id → gera PDF no S3
+[ ] GET  /certificates/:id → retorna presigned URL do PDF
+[ ] CloudWatch Logs mostrando invocações da Lambda
+[ ] Sistema completo funcionando ao vivo
+
+================================================================================
+  Projeto Klass — LaunchCloud IBMEC 2026
+  Contato: mtandradeg28@gmail.com
+================================================================================

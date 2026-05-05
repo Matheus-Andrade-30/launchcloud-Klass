@@ -51,6 +51,45 @@ export async function initDatabase(): Promise<void> {
       )
     `);
 
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS materials (
+        id VARCHAR(36) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        class_id VARCHAR(36) NOT NULL,
+        uploaded_by VARCHAR(36) NOT NULL,
+        s3_key VARCHAR(1024) NOT NULL,
+        content_type VARCHAR(255) NOT NULL,
+        uploaded_at DATETIME NOT NULL,
+        FOREIGN KEY (class_id) REFERENCES classes(id),
+        FOREIGN KEY (uploaded_by) REFERENCES users(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS grades (
+        id VARCHAR(36) PRIMARY KEY,
+        enrollment_id VARCHAR(36) NOT NULL,
+        teacher_id VARCHAR(36) NOT NULL,
+        grade DECIMAL(4,2) NOT NULL,
+        attendance DECIMAL(5,2) NOT NULL,
+        notes TEXT,
+        created_at DATETIME NOT NULL,
+        FOREIGN KEY (enrollment_id) REFERENCES enrollments(id),
+        FOREIGN KEY (teacher_id) REFERENCES users(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS certificates (
+        id VARCHAR(36) PRIMARY KEY,
+        enrollment_id VARCHAR(36) NOT NULL UNIQUE,
+        s3_key VARCHAR(1024) NOT NULL,
+        issued_at DATETIME NOT NULL,
+        FOREIGN KEY (enrollment_id) REFERENCES enrollments(id)
+      )
+    `);
+
     const [rows] = await conn.execute('SELECT COUNT(*) as count FROM users');
     const count = (rows as { count: number }[])[0].count;
 
@@ -100,7 +139,22 @@ export async function initDatabase(): Promise<void> {
         ('e-12', 'u-s7', 'c-10', 'active',    '2024-03-16')
       `);
 
-      console.log('Database seeded: 11 users, 10 classes, 12 enrollments');
+      await conn.execute(`
+        INSERT INTO grades (id, enrollment_id, teacher_id, grade, attendance, notes, created_at) VALUES
+        ('g-1',  'e-1',  'u-t1', 8.5, 90.0, 'Ótimo desempenho em cálculo',           '2024-06-01'),
+        ('g-2',  'e-2',  'u-t2', 9.0, 95.0, 'Excelente trabalho em programação web', '2024-06-01'),
+        ('g-3',  'e-3',  'u-t1', 7.0, 80.0, 'Bom, mas pode melhorar em derivadas',   '2024-06-02'),
+        ('g-4',  'e-4',  'u-t3', 8.0, 85.0, 'Domínio sólido de algoritmos',          '2024-06-02'),
+        ('g-5',  'e-5',  'u-t2', 9.5, 98.0, 'Curso concluído com distinção',         '2024-06-03'),
+        ('g-6',  'e-6',  'u-t3', 8.0, 88.0, 'Bom entendimento de metodologias',      '2024-06-03'),
+        ('g-7',  'e-7',  'u-t1', 6.5, 75.0, 'Precisa revisar mecânica quântica',     '2024-06-04'),
+        ('g-8',  'e-8',  'u-t3', 9.0, 92.0, 'Excelente na parte de cloud',           '2024-06-04'),
+        ('g-9',  'e-9',  'u-t2', 7.5, 82.0, 'Bom em SQL, fraco em normalização',     '2024-06-05'),
+        ('g-11', 'e-11', 'u-t1', 8.5, 91.0, 'Bom domínio de TCP/IP',                 '2024-06-06'),
+        ('g-12', 'e-12', 'u-t1', 7.0, 78.0, 'Em progresso em segurança',             '2024-06-07')
+      `);
+
+      console.log('Database seeded: 11 users, 10 classes, 12 enrollments, 11 grades');
     }
 
     console.log('Database initialized successfully');

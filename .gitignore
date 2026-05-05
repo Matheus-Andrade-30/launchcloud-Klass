@@ -55,3 +55,10 @@ coverage/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# npm lock (projeto usa yarn — não commitar package-lock.json)
+package-lock.json
+
+# Python virtual environment
+venv/
+.venv/

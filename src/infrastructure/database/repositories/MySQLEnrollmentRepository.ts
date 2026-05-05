@@ -15,7 +15,13 @@ export class MySQLEnrollmentRepository implements IEnrollmentRepository {
   async create(enrollment: Enrollment): Promise<Enrollment> {
     await pool.execute(
       'INSERT INTO enrollments (id, student_id, class_id, status, enrolled_at) VALUES (?, ?, ?, ?, ?)',
-      [enrollment.id, enrollment.studentId, enrollment.classId, enrollment.status, enrollment.enrolledAt],
+      [
+        enrollment.id,
+        enrollment.studentId,
+        enrollment.classId,
+        enrollment.status,
+        enrollment.enrolledAt,
+      ],
     );
     return enrollment;
   }
@@ -26,7 +32,9 @@ export class MySQLEnrollmentRepository implements IEnrollmentRepository {
   }
 
   async findById(id: string): Promise<Enrollment | null> {
-    const [rows] = await pool.execute<EnrollmentRow[]>('SELECT * FROM enrollments WHERE id = ?', [id]);
+    const [rows] = await pool.execute<EnrollmentRow[]>('SELECT * FROM enrollments WHERE id = ?', [
+      id,
+    ]);
     if (rows.length === 0) return null;
     const r = rows[0];
     return new Enrollment(r.id, r.student_id, r.class_id, r.status, r.enrolled_at);
@@ -38,5 +46,15 @@ export class MySQLEnrollmentRepository implements IEnrollmentRepository {
       [studentId],
     );
     return rows.map((r) => new Enrollment(r.id, r.student_id, r.class_id, r.status, r.enrolled_at));
+  }
+
+  async updateStatus(id: string, status: Enrollment['status']): Promise<Enrollment | null> {
+    await pool.execute('UPDATE enrollments SET status = ? WHERE id = ?', [status, id]);
+    return this.findById(id);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const [result] = await pool.execute('DELETE FROM enrollments WHERE id = ?', [id]);
+    return (result as { affectedRows: number }).affectedRows > 0;
   }
 }
