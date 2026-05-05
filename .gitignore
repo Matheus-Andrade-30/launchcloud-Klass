@@ -59,6 +59,10 @@ Desktop.ini
 # npm lock (projeto usa yarn — não commitar package-lock.json)
 package-lock.json
 
+# Arquivos gerados pelo script de deploy (contêm credenciais)
+klass.env
+deploy-summary.txt
+
 # Python virtual environment
 venv/
 .venv/
