@@ -154,8 +154,123 @@ export async function initDatabase(): Promise<void> {
         ('g-12', 'e-12', 'u-t1', 7.0, 78.0, 'Em progresso em segurança',             '2024-06-07')
       `);
 
-      console.log('Database seeded: 11 users, 10 classes, 12 enrollments, 11 grades');
+      await conn.execute(`
+        INSERT INTO provas (id, titulo, professor_id, data_inicio, data_fim, duracao_minutos, created_at) VALUES
+        ('p-1', 'Prova Final de Matemática',   'u-t1', '2025-01-01 08:00:00', '2030-12-31 23:59:00', 90, '2024-11-01'),
+        ('p-2', 'Avaliação de Programação Web', 'u-t2', '2025-01-01 08:00:00', '2030-12-31 23:59:00', 60, '2024-11-02')
+      `);
+
+      await conn.execute(`
+        INSERT INTO questoes (id, prova_id, enunciado, tipo, pontuacao, ordem, created_at) VALUES
+        ('q-1', 'p-1', 'Calcule a derivada de f(x) = x² + 3x - 5.',              'dissertativa',    3.00, 1, '2024-11-01'),
+        ('q-2', 'p-1', 'Resolva a integral definida de 0 a 1 de 2x dx.',         'dissertativa',    3.00, 2, '2024-11-01'),
+        ('q-3', 'p-1', 'Qual é o limite de (x²-1)/(x-1) quando x tende a 1?',   'multipla_escolha',4.00, 3, '2024-11-01'),
+        ('q-4', 'p-2', 'Explique a diferença entre CSS Grid e Flexbox.',          'dissertativa',    5.00, 1, '2024-11-02'),
+        ('q-5', 'p-2', 'Escreva uma função JavaScript que retorna a soma de um array.', 'dissertativa',5.00, 2, '2024-11-02')
+      `);
+
+      await conn.execute(`
+        INSERT INTO provas_alunos (id, prova_id, aluno_id) VALUES
+        ('pa-1', 'p-1', 'u-s1'),
+        ('pa-2', 'p-1', 'u-s2'),
+        ('pa-3', 'p-1', 'u-s3'),
+        ('pa-4', 'p-2', 'u-s1'),
+        ('pa-5', 'p-2', 'u-s3')
+      `);
+
+      console.log('Database seeded: 11 users, 10 classes, 12 enrollments, 11 grades, 2 provas, 5 questoes');
     }
+
+    // Tabelas do módulo antifraude
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS provas (
+        id VARCHAR(36) PRIMARY KEY,
+        titulo VARCHAR(255) NOT NULL,
+        professor_id VARCHAR(36) NOT NULL,
+        data_inicio DATETIME NOT NULL,
+        data_fim DATETIME NOT NULL,
+        duracao_minutos INT NOT NULL,
+        created_at DATETIME NOT NULL,
+        FOREIGN KEY (professor_id) REFERENCES users(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS questoes (
+        id VARCHAR(36) PRIMARY KEY,
+        prova_id VARCHAR(36) NOT NULL,
+        enunciado TEXT NOT NULL,
+        tipo ENUM('dissertativa', 'multipla_escolha') NOT NULL DEFAULT 'dissertativa',
+        pontuacao DECIMAL(5,2) NOT NULL,
+        ordem INT NOT NULL,
+        created_at DATETIME NOT NULL,
+        FOREIGN KEY (prova_id) REFERENCES provas(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS provas_alunos (
+        id VARCHAR(36) PRIMARY KEY,
+        prova_id VARCHAR(36) NOT NULL,
+        aluno_id VARCHAR(36) NOT NULL,
+        UNIQUE KEY unique_matricula (prova_id, aluno_id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (aluno_id) REFERENCES users(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS respostas_versoes (
+        id VARCHAR(36) PRIMARY KEY,
+        aluno_id VARCHAR(36) NOT NULL,
+        prova_id VARCHAR(36) NOT NULL,
+        questao_id VARCHAR(36) NOT NULL,
+        versao_num INT NOT NULL,
+        s3_key VARCHAR(1024) NOT NULL,
+        char_count INT NOT NULL DEFAULT 0,
+        line_count INT NOT NULL DEFAULT 0,
+        delta_chars INT NOT NULL DEFAULT 0,
+        suspeito BOOLEAN NOT NULL DEFAULT FALSE,
+        timestamp BIGINT NOT NULL,
+        horario DATETIME NOT NULL,
+        FOREIGN KEY (aluno_id) REFERENCES users(id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (questao_id) REFERENCES questoes(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS telemetria_photocam (
+        id VARCHAR(36) PRIMARY KEY,
+        aluno_id VARCHAR(36) NOT NULL,
+        prova_id VARCHAR(36) NOT NULL,
+        questao_id VARCHAR(36) NOT NULL,
+        s3_key VARCHAR(1024) NOT NULL,
+        faces_detectadas INT NOT NULL DEFAULT 0,
+        similarity_score DECIMAL(5,2),
+        flags JSON,
+        timestamp BIGINT NOT NULL,
+        horario DATETIME NOT NULL,
+        FOREIGN KEY (aluno_id) REFERENCES users(id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (questao_id) REFERENCES questoes(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS telemetria_screenshot (
+        id VARCHAR(36) PRIMARY KEY,
+        aluno_id VARCHAR(36) NOT NULL,
+        prova_id VARCHAR(36) NOT NULL,
+        questao_id VARCHAR(36) NOT NULL,
+        s3_key VARCHAR(1024) NOT NULL,
+        timestamp BIGINT NOT NULL,
+        horario DATETIME NOT NULL,
+        FOREIGN KEY (aluno_id) REFERENCES users(id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (questao_id) REFERENCES questoes(id)
+      )
+    `);
 
     console.log('Database initialized successfully');
   } finally {

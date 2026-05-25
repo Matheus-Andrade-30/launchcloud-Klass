@@ -44,6 +44,29 @@ import { GetCertificateUseCase } from '../../application/certificate/GetCertific
 
 import { S3Service } from '../services/S3Service';
 import { LambdaService } from '../services/LambdaService';
+import { RekognitionService } from '../services/RekognitionService';
+
+import { MySQLProvaRepository } from '../database/repositories/MySQLProvaRepository';
+import { MySQLQuestaoRepository } from '../database/repositories/MySQLQuestaoRepository';
+import { MySQLRespostaVersaoRepository } from '../database/repositories/MySQLRespostaVersaoRepository';
+import { MySQLTelemetriaPhotocamRepository } from '../database/repositories/MySQLTelemetriaPhotocamRepository';
+import { MySQLTelemetriaScreenshotRepository } from '../database/repositories/MySQLTelemetriaScreenshotRepository';
+
+import { GetProvaUseCase } from '../../application/prova/GetProvaUseCase';
+import { CreateProvaUseCase } from '../../application/prova/CreateProvaUseCase';
+import { MatricularAlunoProvaUseCase } from '../../application/prova/MatricularAlunoProvaUseCase';
+import { CreateQuestaoUseCase } from '../../application/questao/CreateQuestaoUseCase';
+import { UpdateQuestaoUseCase } from '../../application/questao/UpdateQuestaoUseCase';
+import { SaveRespostaVersaoUseCase } from '../../application/antifraude/SaveRespostaVersaoUseCase';
+import { SavePhotocamUseCase } from '../../application/antifraude/SavePhotocamUseCase';
+import { SaveScreenshotUseCase } from '../../application/antifraude/SaveScreenshotUseCase';
+import { GetRelatorioProvaUseCase } from '../../application/antifraude/GetRelatorioProvaUseCase';
+
+import { ProvaController } from './controllers/ProvaController';
+import { AntiFraudeController } from './controllers/AntiFraudeController';
+
+import { provaRoutes } from './routes/provaRoutes';
+import { antiFraudeRoutes } from './routes/antiFraudeRoutes';
 
 import { UserController } from './controllers/UserController';
 import { ClassController } from './controllers/ClassController';
@@ -78,6 +101,14 @@ export async function createApp(app: Express): Promise<Express> {
   // Services
   const s3Service = new S3Service();
   const lambdaService = new LambdaService();
+  const rekognitionService = new RekognitionService();
+
+  // Repositories — Antifraude
+  const provaRepository = new MySQLProvaRepository();
+  const questaoRepository = new MySQLQuestaoRepository();
+  const respostaVersaoRepository = new MySQLRespostaVersaoRepository();
+  const photocamRepository = new MySQLTelemetriaPhotocamRepository();
+  const screenshotRepository = new MySQLTelemetriaScreenshotRepository();
 
   // Use Cases — Users
   const createUserUseCase = new CreateUserUseCase(userRepository);
@@ -190,6 +221,21 @@ export async function createApp(app: Express): Promise<Express> {
     res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
   });
 
+  // Use Cases — Antifraude
+  const getProvaUseCase = new GetProvaUseCase(provaRepository);
+  const createProvaUseCase = new CreateProvaUseCase(provaRepository, userRepository);
+  const matricularAlunoUseCase = new MatricularAlunoProvaUseCase(provaRepository, userRepository);
+  const createQuestaoUseCase = new CreateQuestaoUseCase(questaoRepository, provaRepository, userRepository);
+  const updateQuestaoUseCase = new UpdateQuestaoUseCase(questaoRepository, provaRepository, userRepository);
+  const saveRespostaVersaoUseCase = new SaveRespostaVersaoUseCase(respostaVersaoRepository, s3Service);
+  const savePhotocamUseCase = new SavePhotocamUseCase(photocamRepository, s3Service, rekognitionService);
+  const saveScreenshotUseCase = new SaveScreenshotUseCase(screenshotRepository, s3Service);
+  const getRelatorioProvaUseCase = new GetRelatorioProvaUseCase(provaRepository, respostaVersaoRepository, photocamRepository, screenshotRepository);
+
+  // Controllers — Antifraude
+  const provaController = new ProvaController(getProvaUseCase, createProvaUseCase, matricularAlunoUseCase, createQuestaoUseCase, updateQuestaoUseCase);
+  const antiFraudeController = new AntiFraudeController(saveRespostaVersaoUseCase, savePhotocamUseCase, saveScreenshotUseCase, getRelatorioProvaUseCase);
+
   // Routes
   app.use('/users', userRoutes(userController));
   app.use('/classes', classRoutes(classController));
@@ -197,6 +243,8 @@ export async function createApp(app: Express): Promise<Express> {
   app.use('/materials', materialRoutes(materialController));
   app.use('/grades', gradeRoutes(gradeController));
   app.use('/certificates', certificateRoutes(certificateController));
+  app.use('/prova', provaRoutes(provaController));
+  app.use('/antifraude', antiFraudeRoutes(antiFraudeController));
 
   return app;
 }
