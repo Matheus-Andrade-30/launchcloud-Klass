@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CloudFormation Template for Launchcloud Klass - Deploy RDS, EC2, S3, Lambda and API Gateway'
+Description: 'CloudFormation Template for Launchcloud Klass - RDS, S3, Lambda and API Gateway (serverless)'
 
 Parameters:
   DBName:
@@ -15,45 +15,25 @@ Parameters:
     NoEcho: true
     Description: The database admin account password
     MinLength: 8
-  InstanceType:
+  AppS3Bucket:
     Type: String
-    Default: t2.micro
-    AllowedValues: [t2.micro, t3.micro]
-    Description: EC2 Instance Type
-  KeyName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Description: Nome do bucket S3 onde o zip do app foi enviado (ex: meu-bucket-deploy)
+  AppS3Key:
+    Type: String
+    Default: launchcloud-klass.zip
+    Description: Chave do arquivo zip no bucket de deploy
 
 Resources:
-  # VPC Security Group for EC2
-  EC2SecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Allow SSH, HTTP, and Node.js port 3000
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 3000
-          ToPort: 3000
-          CidrIp: 0.0.0.0/0
-
-  # VPC Security Group for RDS
+  # Security Group para o RDS (acesso publico em dev)
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow MySQL access from everywhere
+      GroupDescription: Allow MySQL access
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
-          CidrIp: 0.0.0.0/0 # Em dev. Em prod, mudar para o EC2SecurityGroup
+          CidrIp: 0.0.0.0/0
 
   # RDS Database Instance
   KlassDB:
@@ -70,45 +50,7 @@ Resources:
       VPCSecurityGroups:
         - !Ref RDSSecurityGroup
 
-  # IAM Role for EC2
-  EC2Role:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
-        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
-
-  EC2InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles:
-        - !Ref EC2Role
-
-  # EC2 Server Instance
-  KlassEC2Instance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: !Ref InstanceType
-      KeyName: !Ref KeyName
-      ImageId: ami-0c101f26f147fa7fd # Amazon Linux 2023 AMI in us-east-1 (please adjust according to your region)
-      SecurityGroupIds:
-        - !Ref EC2SecurityGroup
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-          yum install -y nodejs git
-          npm install -g pm2 yarn
-
-  # S3 Bucket
+  # S3 Bucket para materiais, certificados e uploads
   KlassBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -127,7 +69,7 @@ Resources:
             ExposeHeaders:
               - ETag
 
-  # IAM Role for Lambda
+  # IAM Role compartilhada pelas duas Lambdas
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -141,8 +83,32 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
 
-  # Lambda Function
+  # Lambda principal: roda o Express inteiro via serverless-http
+  KlassAppLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: klass-app
+      Handler: dist/lambda.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref AppS3Bucket
+        S3Key: !Ref AppS3Key
+      Runtime: nodejs20.x
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt KlassDB.Endpoint.Address
+          DB_PORT: "3306"
+          DB_USER: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+          DB_NAME: !Ref DBName
+          S3_BUCKET_NAME: !Sub "klass-materials-${AWS::AccountId}"
+          LAMBDA_CERTIFICATE_FUNCTION: !Ref CertificatesLambda
+
+  # Lambda de certificados: gera PDF e salva no S3
   CertificatesLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -154,19 +120,75 @@ Resources:
           exports.handler = async (event) => {
               return {
                   statusCode: 200,
-                  body: JSON.stringify('Lambda placeholder gerada via CloudFormation!'),
+                  body: JSON.stringify('Lambda placeholder — substitua pelo codigo real de geracao de PDF'),
               };
           };
-      Runtime: nodejs18.x
-      Timeout: 10
+      Runtime: nodejs20.x
+      Timeout: 30
+
+  # Permissao para o API Gateway invocar a Lambda do app
+  ApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt KlassAppLambda.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${KlassHttpApi}/*"
+
+  # API Gateway HTTP API (v2)
+  KlassHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: klass-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - "*"
+        MaxAge: 300
+
+  # Integracao Lambda Proxy: API Gateway -> KlassAppLambda
+  KlassApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref KlassHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${KlassAppLambda.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  # Rota padrao: captura qualquer path e metodo
+  KlassApiDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref KlassHttpApi
+      RouteKey: "$default"
+      Target: !Sub "integrations/${KlassApiIntegration}"
+
+  # Stage com auto-deploy
+  KlassApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref KlassHttpApi
+      StageName: "$default"
+      AutoDeploy: true
 
 Outputs:
-  EC2PublicIP:
-    Description: IP publico do EC2
-    Value: !GetAtt KlassEC2Instance.PublicIp
+  ApiGatewayUrl:
+    Description: URL publica do API Gateway — use esta em todos os endpoints e no Swagger
+    Value: !Sub "https://${KlassHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
   RDSAddress:
     Description: Endpoint do banco de dados RDS
     Value: !GetAtt KlassDB.Endpoint.Address
   S3BucketName:
-    Description: Nome do Bucket S3
+    Description: Nome do Bucket S3 para materiais e certificados
     Value: !Ref KlassBucket
+  CertificateLambdaName:
+    Description: Nome da Lambda de certificados
+    Value: !Ref CertificatesLambda
