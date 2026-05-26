@@ -22,6 +22,9 @@ const options: swaggerJsdoc.Options = {
       { name: 'Materials', description: 'Materiais didáticos armazenados no Amazon S3' },
       { name: 'Grades', description: 'Notas e frequência dos alunos' },
       { name: 'Certificates', description: 'Certificados gerados via AWS Lambda' },
+      { name: 'Provas', description: 'Criação e realização de provas' },
+      { name: 'Questoes', description: 'Questões vinculadas às provas' },
+      { name: 'Antifraude', description: 'Telemetria de sessão e relatório de fraude' },
     ],
     components: {
       schemas: {
@@ -163,6 +166,94 @@ const options: swaggerJsdoc.Options = {
         Error: {
           type: 'object',
           properties: { error: { type: 'string' } },
+        },
+        Prova: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            titulo: { type: 'string', example: 'Prova Final de Matemática' },
+            professorId: { type: 'string', example: 'u-t1' },
+            dataInicio: { type: 'string', format: 'date-time' },
+            dataFim: { type: 'string', format: 'date-time' },
+            duracaoMinutos: { type: 'integer', example: 90 },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        CreateProva: {
+          type: 'object',
+          required: ['professorId', 'titulo', 'dataInicio', 'dataFim', 'duracaoMinutos'],
+          properties: {
+            professorId: { type: 'string', example: 'u-t1' },
+            titulo: { type: 'string', example: 'Prova Final de Matemática' },
+            dataInicio: { type: 'string', example: '2025-06-01T08:00:00.000Z' },
+            dataFim: { type: 'string', example: '2025-06-01T10:00:00.000Z' },
+            duracaoMinutos: { type: 'integer', example: 90 },
+          },
+        },
+        Questao: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            provaId: { type: 'string' },
+            enunciado: { type: 'string' },
+            tipo: { type: 'string', enum: ['dissertativa', 'multipla_escolha'] },
+            pontuacao: { type: 'number', example: 3.0 },
+            ordem: { type: 'integer', example: 1 },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        CreateQuestao: {
+          type: 'object',
+          required: ['provaId', 'professorId', 'enunciado', 'tipo', 'pontuacao', 'ordem'],
+          properties: {
+            provaId: { type: 'string', example: 'p-1' },
+            professorId: { type: 'string', example: 'u-t1' },
+            enunciado: { type: 'string', example: 'Calcule a derivada de f(x) = x².' },
+            tipo: { type: 'string', enum: ['dissertativa', 'multipla_escolha'] },
+            pontuacao: { type: 'number', example: 3.0 },
+            ordem: { type: 'integer', example: 1 },
+          },
+        },
+        ProvaComQuestoes: {
+          type: 'object',
+          properties: {
+            prova: { $ref: '#/components/schemas/Prova' },
+            questoes: { type: 'array', items: { $ref: '#/components/schemas/Questao' } },
+          },
+        },
+        RelatorioAluno: {
+          type: 'object',
+          properties: {
+            alunoId: { type: 'string' },
+            nivelRisco: { type: 'string', enum: ['baixo', 'medio', 'alto'] },
+            totalVersoesSuspeitas: { type: 'integer' },
+            totalFotosComFlags: { type: 'integer' },
+            totalScreenshots: { type: 'integer' },
+            eventos: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  tipo: { type: 'string', example: 'cola_detectada' },
+                  questaoId: { type: 'string' },
+                  horario: { type: 'string', format: 'date-time' },
+                  s3Key: { type: 'string' },
+                  detalhes: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+        RelatorioProva: {
+          type: 'object',
+          properties: {
+            provaId: { type: 'string' },
+            titulo: { type: 'string' },
+            geradoEm: { type: 'string', format: 'date-time' },
+            totalAlunos: { type: 'integer' },
+            alunosComAlerta: { type: 'integer' },
+            alunos: { type: 'array', items: { $ref: '#/components/schemas/RelatorioAluno' } },
+          },
         },
       },
     },
@@ -639,6 +730,239 @@ const options: swaggerJsdoc.Options = {
               description: 'Certificado não encontrado',
               content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
             },
+          },
+        },
+      },
+      '/prova': {
+        get: {
+          tags: ['Provas'],
+          summary: 'Retorna prova com questões para um aluno matriculado',
+          parameters: [
+            { name: 'prova_id', in: 'query', required: true, schema: { type: 'string' }, example: 'p-1' },
+            { name: 'aluno_id', in: 'query', required: true, schema: { type: 'string' }, example: 'u-s1' },
+          ],
+          responses: {
+            200: {
+              description: 'Prova com questões',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/ProvaComQuestoes' } } },
+            },
+            403: { description: 'Aluno não matriculado nesta prova' },
+            404: { description: 'Prova não encontrada' },
+            410: { description: 'Prova encerrada' },
+            425: { description: 'Prova ainda não iniciou' },
+          },
+        },
+        post: {
+          tags: ['Provas'],
+          summary: 'Cria uma nova prova (somente professor)',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateProva' } } },
+          },
+          responses: {
+            201: {
+              description: 'Prova criada',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Prova' } } },
+            },
+            403: { description: 'Apenas professores podem criar provas' },
+          },
+        },
+      },
+      '/prova/{id}/alunos': {
+        post: {
+          tags: ['Provas'],
+          summary: 'Matricula um aluno em uma prova',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, example: 'p-1' }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['alunoId'],
+                  properties: { alunoId: { type: 'string', example: 'u-s1' } },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Aluno matriculado', content: { 'application/json': { schema: { type: 'object', properties: { matriculado: { type: 'boolean' } } } } } },
+            403: { description: 'Apenas alunos podem ser matriculados' },
+            404: { description: 'Prova ou aluno não encontrado' },
+          },
+        },
+      },
+      '/prova/questoes': {
+        post: {
+          tags: ['Questoes'],
+          summary: 'Adiciona questão a uma prova',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateQuestao' } } },
+          },
+          responses: {
+            201: {
+              description: 'Questão criada',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Questao' } } },
+            },
+          },
+        },
+      },
+      '/prova/questoes/{id}': {
+        put: {
+          tags: ['Questoes'],
+          summary: 'Atualiza enunciado ou pontuação de uma questão',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    professorId: { type: 'string', example: 'u-t1' },
+                    enunciado: { type: 'string' },
+                    pontuacao: { type: 'number' },
+                    ordem: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Questão atualizada' },
+            404: { description: 'Questão não encontrada' },
+          },
+        },
+      },
+      '/antifraude/respostas/versoes': {
+        post: {
+          tags: ['Antifraude'],
+          summary: 'Salva versão da resposta — detecta cola automaticamente',
+          description: 'Chamado a cada 2-3 segundos durante a prova. Detecta cola quando deltaChars > 100 em velocidade > 50 chars/s. Persiste conteúdo no S3.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['aluno_id', 'prova_id', 'questao_id', 'timestamp', 'horario', 'conteudo'],
+                  properties: {
+                    aluno_id: { type: 'string', example: 'u-s1' },
+                    prova_id: { type: 'string', example: 'p-1' },
+                    questao_id: { type: 'string', example: 'q-1' },
+                    timestamp: { type: 'integer', example: 1716681600000, description: 'Unix ms' },
+                    horario: { type: 'string', example: '2025-05-26T10:00:00.000Z' },
+                    conteudo: { type: 'string', example: 'A derivada de f(x) = x² é f\'(x) = 2x.' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: 'Versão salva',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      versaoNum: { type: 'integer' },
+                      suspeito: { type: 'boolean', description: 'true se velocidade de digitação suspeita' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/antifraude/telemetria/photocam': {
+        post: {
+          tags: ['Antifraude'],
+          summary: 'Salva foto da câmera e analisa rosto com AWS Rekognition',
+          description: 'Chamado a cada 2-3 segundos. Detecta: sem_rosto, multiplos_rostos, identidade_suspeita (<80% similarity). Persiste imagem no S3.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['aluno_id', 'prova_id', 'questao_id', 'timestamp', 'horario', 'imagem_base64'],
+                  properties: {
+                    aluno_id: { type: 'string', example: 'u-s1' },
+                    prova_id: { type: 'string', example: 'p-1' },
+                    questao_id: { type: 'string', example: 'q-1' },
+                    timestamp: { type: 'integer', example: 1716681600000 },
+                    horario: { type: 'string', example: '2025-05-26T10:00:00.000Z' },
+                    imagem_base64: { type: 'string', description: 'Imagem JPEG em Base64' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: 'Foto analisada',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      registrado: { type: 'boolean' },
+                      flags: { type: 'array', items: { type: 'string' }, example: ['sem_rosto'] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/antifraude/telemetria/screenshot': {
+        post: {
+          tags: ['Antifraude'],
+          summary: 'Salva print da tela para análise posterior',
+          description: 'Chamado a cada 2-3 segundos. Persiste PNG no S3 para revisão humana.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['aluno_id', 'prova_id', 'questao_id', 'timestamp', 'horario', 'screenshot_base64'],
+                  properties: {
+                    aluno_id: { type: 'string', example: 'u-s1' },
+                    prova_id: { type: 'string', example: 'p-1' },
+                    questao_id: { type: 'string', example: 'q-1' },
+                    timestamp: { type: 'integer', example: 1716681600000 },
+                    horario: { type: 'string', example: '2025-05-26T10:00:00.000Z' },
+                    screenshot_base64: { type: 'string', description: 'Print da tela em Base64 (PNG)' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: 'Screenshot salvo',
+              content: { 'application/json': { schema: { type: 'object', properties: { registrado: { type: 'boolean' } } } } },
+            },
+          },
+        },
+      },
+      '/antifraude/relatorio/{provaId}': {
+        get: {
+          tags: ['Antifraude'],
+          summary: 'Relatório de fraude da prova agrupado por aluno',
+          description: 'Retorna todos os eventos suspeitos (cola, rosto ausente, identidade suspeita) ordenados por nível de risco (alto → baixo).',
+          parameters: [{ name: 'provaId', in: 'path', required: true, schema: { type: 'string' }, example: 'p-1' }],
+          responses: {
+            200: {
+              description: 'Relatório gerado',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/RelatorioProva' } } },
+            },
+            404: { description: 'Prova não encontrada' },
           },
         },
       },
