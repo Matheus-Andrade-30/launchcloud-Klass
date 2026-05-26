@@ -63,6 +63,11 @@ package-lock.json
 klass.env
 deploy-summary.txt
 
+# Artefatos de deploy Lambda
+lambda-package/
+klass-lambda.zip
+launchcloud-klass.zip
+
 # Python virtual environment
 venv/
 .venv/

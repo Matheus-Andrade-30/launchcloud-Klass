@@ -90,6 +90,97 @@ export async function initDatabase(): Promise<void> {
       )
     `);
 
+    // Tabelas do módulo antifraude (criadas antes do seed para garantir ordem correta)
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS provas (
+        id VARCHAR(36) PRIMARY KEY,
+        titulo VARCHAR(255) NOT NULL,
+        professor_id VARCHAR(36) NOT NULL,
+        data_inicio DATETIME NOT NULL,
+        data_fim DATETIME NOT NULL,
+        duracao_minutos INT NOT NULL,
+        created_at DATETIME NOT NULL,
+        FOREIGN KEY (professor_id) REFERENCES users(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS questoes (
+        id VARCHAR(36) PRIMARY KEY,
+        prova_id VARCHAR(36) NOT NULL,
+        enunciado TEXT NOT NULL,
+        tipo ENUM('dissertativa', 'multipla_escolha') NOT NULL DEFAULT 'dissertativa',
+        pontuacao DECIMAL(5,2) NOT NULL,
+        ordem INT NOT NULL,
+        created_at DATETIME NOT NULL,
+        FOREIGN KEY (prova_id) REFERENCES provas(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS provas_alunos (
+        id VARCHAR(36) PRIMARY KEY,
+        prova_id VARCHAR(36) NOT NULL,
+        aluno_id VARCHAR(36) NOT NULL,
+        UNIQUE KEY unique_matricula (prova_id, aluno_id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (aluno_id) REFERENCES users(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS respostas_versoes (
+        id VARCHAR(36) PRIMARY KEY,
+        aluno_id VARCHAR(36) NOT NULL,
+        prova_id VARCHAR(36) NOT NULL,
+        questao_id VARCHAR(36) NOT NULL,
+        versao_num INT NOT NULL,
+        s3_key VARCHAR(1024) NOT NULL,
+        char_count INT NOT NULL DEFAULT 0,
+        line_count INT NOT NULL DEFAULT 0,
+        delta_chars INT NOT NULL DEFAULT 0,
+        suspeito BOOLEAN NOT NULL DEFAULT FALSE,
+        timestamp BIGINT NOT NULL,
+        horario DATETIME NOT NULL,
+        FOREIGN KEY (aluno_id) REFERENCES users(id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (questao_id) REFERENCES questoes(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS telemetria_photocam (
+        id VARCHAR(36) PRIMARY KEY,
+        aluno_id VARCHAR(36) NOT NULL,
+        prova_id VARCHAR(36) NOT NULL,
+        questao_id VARCHAR(36) NOT NULL,
+        s3_key VARCHAR(1024) NOT NULL,
+        faces_detectadas INT NOT NULL DEFAULT 0,
+        similarity_score DECIMAL(5,2),
+        flags JSON,
+        timestamp BIGINT NOT NULL,
+        horario DATETIME NOT NULL,
+        FOREIGN KEY (aluno_id) REFERENCES users(id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (questao_id) REFERENCES questoes(id)
+      )
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS telemetria_screenshot (
+        id VARCHAR(36) PRIMARY KEY,
+        aluno_id VARCHAR(36) NOT NULL,
+        prova_id VARCHAR(36) NOT NULL,
+        questao_id VARCHAR(36) NOT NULL,
+        s3_key VARCHAR(1024) NOT NULL,
+        timestamp BIGINT NOT NULL,
+        horario DATETIME NOT NULL,
+        FOREIGN KEY (aluno_id) REFERENCES users(id),
+        FOREIGN KEY (prova_id) REFERENCES provas(id),
+        FOREIGN KEY (questao_id) REFERENCES questoes(id)
+      )
+    `);
+
     const [rows] = await conn.execute('SELECT COUNT(*) as count FROM users');
     const count = (rows as { count: number }[])[0].count;
 
@@ -180,97 +271,6 @@ export async function initDatabase(): Promise<void> {
 
       console.log('Database seeded: 11 users, 10 classes, 12 enrollments, 11 grades, 2 provas, 5 questoes');
     }
-
-    // Tabelas do módulo antifraude
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS provas (
-        id VARCHAR(36) PRIMARY KEY,
-        titulo VARCHAR(255) NOT NULL,
-        professor_id VARCHAR(36) NOT NULL,
-        data_inicio DATETIME NOT NULL,
-        data_fim DATETIME NOT NULL,
-        duracao_minutos INT NOT NULL,
-        created_at DATETIME NOT NULL,
-        FOREIGN KEY (professor_id) REFERENCES users(id)
-      )
-    `);
-
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS questoes (
-        id VARCHAR(36) PRIMARY KEY,
-        prova_id VARCHAR(36) NOT NULL,
-        enunciado TEXT NOT NULL,
-        tipo ENUM('dissertativa', 'multipla_escolha') NOT NULL DEFAULT 'dissertativa',
-        pontuacao DECIMAL(5,2) NOT NULL,
-        ordem INT NOT NULL,
-        created_at DATETIME NOT NULL,
-        FOREIGN KEY (prova_id) REFERENCES provas(id)
-      )
-    `);
-
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS provas_alunos (
-        id VARCHAR(36) PRIMARY KEY,
-        prova_id VARCHAR(36) NOT NULL,
-        aluno_id VARCHAR(36) NOT NULL,
-        UNIQUE KEY unique_matricula (prova_id, aluno_id),
-        FOREIGN KEY (prova_id) REFERENCES provas(id),
-        FOREIGN KEY (aluno_id) REFERENCES users(id)
-      )
-    `);
-
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS respostas_versoes (
-        id VARCHAR(36) PRIMARY KEY,
-        aluno_id VARCHAR(36) NOT NULL,
-        prova_id VARCHAR(36) NOT NULL,
-        questao_id VARCHAR(36) NOT NULL,
-        versao_num INT NOT NULL,
-        s3_key VARCHAR(1024) NOT NULL,
-        char_count INT NOT NULL DEFAULT 0,
-        line_count INT NOT NULL DEFAULT 0,
-        delta_chars INT NOT NULL DEFAULT 0,
-        suspeito BOOLEAN NOT NULL DEFAULT FALSE,
-        timestamp BIGINT NOT NULL,
-        horario DATETIME NOT NULL,
-        FOREIGN KEY (aluno_id) REFERENCES users(id),
-        FOREIGN KEY (prova_id) REFERENCES provas(id),
-        FOREIGN KEY (questao_id) REFERENCES questoes(id)
-      )
-    `);
-
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS telemetria_photocam (
-        id VARCHAR(36) PRIMARY KEY,
-        aluno_id VARCHAR(36) NOT NULL,
-        prova_id VARCHAR(36) NOT NULL,
-        questao_id VARCHAR(36) NOT NULL,
-        s3_key VARCHAR(1024) NOT NULL,
-        faces_detectadas INT NOT NULL DEFAULT 0,
-        similarity_score DECIMAL(5,2),
-        flags JSON,
-        timestamp BIGINT NOT NULL,
-        horario DATETIME NOT NULL,
-        FOREIGN KEY (aluno_id) REFERENCES users(id),
-        FOREIGN KEY (prova_id) REFERENCES provas(id),
-        FOREIGN KEY (questao_id) REFERENCES questoes(id)
-      )
-    `);
-
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS telemetria_screenshot (
-        id VARCHAR(36) PRIMARY KEY,
-        aluno_id VARCHAR(36) NOT NULL,
-        prova_id VARCHAR(36) NOT NULL,
-        questao_id VARCHAR(36) NOT NULL,
-        s3_key VARCHAR(1024) NOT NULL,
-        timestamp BIGINT NOT NULL,
-        horario DATETIME NOT NULL,
-        FOREIGN KEY (aluno_id) REFERENCES users(id),
-        FOREIGN KEY (prova_id) REFERENCES provas(id),
-        FOREIGN KEY (questao_id) REFERENCES questoes(id)
-      )
-    `);
 
     console.log('Database initialized successfully');
   } finally {
