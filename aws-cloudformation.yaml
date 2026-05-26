@@ -17,23 +17,39 @@ Parameters:
     MinLength: 8
   AppS3Bucket:
     Type: String
-    Description: Nome do bucket S3 onde o zip do app foi enviado (ex: meu-bucket-deploy)
+    Description: "Nome do bucket S3 onde o zip do app foi enviado"
   AppS3Key:
     Type: String
-    Default: launchcloud-klass.zip
+    Default: klass-lambda.zip
     Description: Chave do arquivo zip no bucket de deploy
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0cc6a0e0aabf4cdf9
+    Description: VPC onde o RDS sera criado
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-0e50279d1034d1c43,subnet-067f1e35d87b2659b,subnet-0a48c2c09a9ecbfad"
+    Description: Subnets do VPC para o RDS (minimo 2 AZs)
 
 Resources:
-  # Security Group para o RDS (acesso publico em dev)
+  # Security Group para o RDS
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow MySQL access
+      GroupDescription: Allow MySQL access from anywhere
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: 0.0.0.0/0
+
+  # Subnet Group para o RDS
+  KlassDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Klass RDS
+      SubnetIds: !Ref SubnetIds
 
   # RDS Database Instance
   KlassDB:
@@ -47,10 +63,11 @@ Resources:
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
       PubliclyAccessible: true
+      DBSubnetGroupName: !Ref KlassDBSubnetGroup
       VPCSecurityGroups:
-        - !Ref RDSSecurityGroup
+        - !GetAtt RDSSecurityGroup.GroupId
 
-  # S3 Bucket para materiais, certificados e uploads
+  # S3 Bucket para materiais, certificados, telemetria e respostas
   KlassBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -69,29 +86,13 @@ Resources:
             ExposeHeaders:
               - ETag
 
-  # IAM Role compartilhada pelas duas Lambdas
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
-        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
-
-  # Lambda principal: roda o Express inteiro via serverless-http
+  # Lambda principal: roda o Express via serverless-http
   KlassAppLambda:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: klass-app
       Handler: dist/lambda.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: arn:aws:iam::278746617329:role/ibmec/service-roles/ibmec-e87072cc-660fe9-lambda-role
       Code:
         S3Bucket: !Ref AppS3Bucket
         S3Key: !Ref AppS3Key
@@ -108,34 +109,35 @@ Resources:
           S3_BUCKET_NAME: !Sub "klass-materials-${AWS::AccountId}"
           LAMBDA_CERTIFICATE_FUNCTION: !Ref CertificatesLambda
 
-  # Lambda de certificados: gera PDF e salva no S3
+  # Lambda de certificados (placeholder)
   CertificatesLambda:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: klass-generate-certificate
       Handler: index.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: arn:aws:iam::278746617329:role/ibmec/service-roles/ibmec-e87072cc-660fe9-lambda-role
       Code:
         ZipFile: |
           exports.handler = async (event) => {
               return {
                   statusCode: 200,
-                  body: JSON.stringify('Lambda placeholder — substitua pelo codigo real de geracao de PDF'),
+                  body: JSON.stringify('Lambda placeholder de certificados'),
               };
           };
       Runtime: nodejs20.x
       Timeout: 30
 
-  # Permissao para o API Gateway invocar a Lambda do app
+  # Permissao para o API Gateway invocar a Lambda
   ApiGatewayLambdaPermission:
     Type: AWS::Lambda::Permission
+    DependsOn: KlassAppLambda
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !GetAtt KlassAppLambda.Arn
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${KlassHttpApi}/*"
 
-  # API Gateway HTTP API (v2)
+  # API Gateway HTTP API v2
   KlassHttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -154,7 +156,7 @@ Resources:
           - "*"
         MaxAge: 300
 
-  # Integracao Lambda Proxy: API Gateway -> KlassAppLambda
+  # Integracao Lambda Proxy
   KlassApiIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
@@ -181,13 +183,13 @@ Resources:
 
 Outputs:
   ApiGatewayUrl:
-    Description: URL publica do API Gateway — use esta em todos os endpoints e no Swagger
+    Description: URL publica do API Gateway
     Value: !Sub "https://${KlassHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
   RDSAddress:
     Description: Endpoint do banco de dados RDS
     Value: !GetAtt KlassDB.Endpoint.Address
   S3BucketName:
-    Description: Nome do Bucket S3 para materiais e certificados
+    Description: Nome do Bucket S3
     Value: !Ref KlassBucket
   CertificateLambdaName:
     Description: Nome da Lambda de certificados
