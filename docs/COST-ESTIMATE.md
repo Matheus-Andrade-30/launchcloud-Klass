@@ -138,3 +138,18 @@
 ---
 
 *Estimativa baseada nos preços públicos AWS de maio 2026 (us-east-1). Valores reais podem variar com uso de Data Transfer, Savings Plans e variações de pricing.*
+
+---
+
+## Referência — AWS Pricing Calculator
+
+Estimativa base gerada na AWS Pricing Calculator (cenário de uso baixo/desenvolvimento):
+
+**Link:** https://calculator.aws/#/estimate?id=d29073a49b36923a6b9f9f2fa9959b7b77905964
+
+Os cenários Médio e Alto foram projetados aplicando fatores de escala sobre os preços unitários oficiais da calculadora:
+- Lambda: $0,20/1M req + $0,0000166667/GB-s
+- API Gateway HTTP: $1,00/1M req
+- RDS db.t3.micro: $0,017/hora (us-east-1)
+- S3 Standard: $0,023/GB/mês
+- Rekognition: $0,001/imagem
