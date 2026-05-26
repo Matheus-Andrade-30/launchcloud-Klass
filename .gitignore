@@ -67,6 +67,8 @@ deploy-summary.txt
 lambda-package/
 klass-lambda.zip
 launchcloud-klass.zip
+certificate-lambda.zip
+response.json
 
 # Python virtual environment
 venv/

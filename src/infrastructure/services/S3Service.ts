@@ -8,13 +8,6 @@ export class S3Service {
   constructor() {
     this.client = new S3Client({
       region: process.env.AWS_REGION || 'us-east-1',
-      credentials:
-        process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
-          ? {
-              accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-            }
-          : undefined,
     });
     this.bucket = process.env.S3_BUCKET_NAME || '';
   }

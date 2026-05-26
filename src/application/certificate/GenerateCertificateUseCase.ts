@@ -43,7 +43,7 @@ export class GenerateCertificateUseCase {
     if (!cls) throw new Error('Class not found');
 
     const certificateId = randomUUID();
-    const s3Key = `certificates/${enrollmentId}/${certificateId}.pdf`;
+    const s3Key = `certificates/${enrollmentId}/${certificateId}.html`;
 
     await this.lambdaService.invoke(
       process.env.LAMBDA_CERTIFICATE_FUNCTION || 'klass-generate-certificate',
