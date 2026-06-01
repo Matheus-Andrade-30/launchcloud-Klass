@@ -67,6 +67,7 @@ import { AntiFraudeController } from './controllers/AntiFraudeController';
 
 import { provaRoutes } from './routes/provaRoutes';
 import { antiFraudeRoutes } from './routes/antiFraudeRoutes';
+import { authRoutes } from './routes/authRoutes';
 
 import { UserController } from './controllers/UserController';
 import { ClassController } from './controllers/ClassController';
@@ -237,6 +238,7 @@ export async function createApp(app: Express): Promise<Express> {
   const antiFraudeController = new AntiFraudeController(saveRespostaVersaoUseCase, savePhotocamUseCase, saveScreenshotUseCase, getRelatorioProvaUseCase);
 
   // Routes
+  app.use('/auth', authRoutes(userRepository));
   app.use('/users', userRoutes(userController));
   app.use('/classes', classRoutes(classController));
   app.use('/enrollments', enrollmentRoutes(enrollmentController));
