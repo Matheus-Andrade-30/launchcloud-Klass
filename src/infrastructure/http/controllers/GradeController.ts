@@ -3,6 +3,7 @@ import { CreateGradeUseCase } from '../../../application/grade/CreateGradeUseCas
 import { ListGradesUseCase } from '../../../application/grade/ListGradesUseCase';
 import { GetGradeByIdUseCase } from '../../../application/grade/GetGradeByIdUseCase';
 import { ListGradesByEnrollmentUseCase } from '../../../application/grade/ListGradesByEnrollmentUseCase';
+import { UpdateGradeUseCase } from '../../../application/grade/UpdateGradeUseCase';
 
 export class GradeController {
   constructor(
@@ -10,12 +11,27 @@ export class GradeController {
     private listGradesUseCase: ListGradesUseCase,
     private getGradeByIdUseCase: GetGradeByIdUseCase,
     private listGradesByEnrollmentUseCase: ListGradesByEnrollmentUseCase,
+    private updateGradeUseCase: UpdateGradeUseCase,
   ) {}
 
   async create(req: Request, res: Response): Promise<void> {
     try {
       const grade = await this.createGradeUseCase.execute(req.body);
       res.status(201).json(grade);
+    } catch (error) {
+      const err = error as Error;
+      const status = err.message.includes('not found') ? 404 : 400;
+      res.status(status).json({ error: err.message });
+    }
+  }
+
+  async update(req: Request, res: Response): Promise<void> {
+    try {
+      const grade = await this.updateGradeUseCase.execute({
+        id: req.params.id as string,
+        ...req.body,
+      });
+      res.status(200).json(grade);
     } catch (error) {
       const err = error as Error;
       const status = err.message.includes('not found') ? 404 : 400;

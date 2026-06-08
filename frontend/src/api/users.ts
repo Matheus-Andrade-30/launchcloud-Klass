@@ -1,5 +1,5 @@
 import type { User, UserRole } from '@/types';
-import { userStore, uuid } from '@/lib/localStore';
+import api from './client';
 
 export interface CreateUserPayload {
   name: string;
@@ -9,30 +9,25 @@ export interface CreateUserPayload {
 }
 
 export async function listUsers(): Promise<User[]> {
-  return userStore.list();
+  const { data } = await api.get<User[]>('/users');
+  return data;
 }
 
 export async function getUserById(id: string): Promise<User> {
-  const u = userStore.findById(id);
-  if (!u) throw new Error('Usuário não encontrado');
-  return u;
+  const { data } = await api.get<User>(`/users/${id}`);
+  return data;
 }
 
 export async function createUser(payload: CreateUserPayload): Promise<User> {
-  const user: User = {
-    id: uuid(),
-    name: payload.name,
-    email: payload.email,
-    role: payload.role,
-    createdAt: new Date().toISOString(),
-  };
-  return userStore.create(user);
+  const { data } = await api.post<User>('/users', payload);
+  return data;
 }
 
 export async function updateUser(id: string, payload: Partial<CreateUserPayload>): Promise<User> {
-  return userStore.update(id, payload);
+  const { data } = await api.put<User>(`/users/${id}`, payload);
+  return data;
 }
 
 export async function deleteUser(id: string): Promise<void> {
-  userStore.remove(id);
+  await api.delete(`/users/${id}`);
 }

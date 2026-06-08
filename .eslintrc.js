@@ -12,7 +12,17 @@ module.exports = {
     node: true,
     jest: true,
   },
-  ignorePatterns: ['.eslintrc.js', 'dist', 'node_modules'],
+  // Este eslint cobre apenas o backend (src/). Frontend e as Lambdas avulsas
+  // (JS puro / fora do tsconfig) sao ignorados para nao quebrar o parser TS.
+  ignorePatterns: [
+    '.eslintrc.js',
+    'dist',
+    'node_modules',
+    'frontend',
+    'certificate-lambda',
+    'fraud-lambda',
+    'lambda-package',
+  ],
   rules: {
     '@typescript-eslint/interface-name-prefix': 'off',
     '@typescript-eslint/explicit-function-return-type': 'off',

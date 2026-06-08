@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CloudFormation Template for Launchcloud Klass - RDS, S3, Lambda and API Gateway (serverless)'
+Description: 'CloudFormation Template for Launchcloud Klass - RDS, S3, Lambda, API Gateway, SNS and CloudFront (serverless, HTTPS front)'
 
 Parameters:
   DBName:
@@ -17,19 +17,46 @@ Parameters:
     MinLength: 8
   AppS3Bucket:
     Type: String
-    Description: "Nome do bucket S3 onde o zip do app foi enviado"
+    Description: 'Nome do bucket S3 onde o zip do app foi enviado'
   AppS3Key:
     Type: String
     Default: klass-lambda.zip
     Description: Chave do arquivo zip no bucket de deploy
+  FraudLambdaS3Key:
+    Type: String
+    Default: fraud-lambda.zip
+    Description: Chave do arquivo zip da Lambda de antifraude no bucket de deploy
+  CertLambdaS3Key:
+    Type: String
+    Default: certificate-lambda.zip
+    Description: Chave do arquivo zip da Lambda de certificado no bucket de deploy
+  ProfessorAlertEmail:
+    Type: String
+    Description: E-mail que recebe os alertas de fraude (assinatura de demonstracao do SNS)
+  FraudThreshold:
+    Type: Number
+    Default: 1
+    Description: Numero minimo de flags/ocorrencias para disparar o alerta de fraude
   VpcId:
     Type: AWS::EC2::VPC::Id
     Default: vpc-0cc6a0e0aabf4cdf9
     Description: VPC onde o RDS sera criado
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Default: "subnet-0e50279d1034d1c43,subnet-067f1e35d87b2659b,subnet-0a48c2c09a9ecbfad"
+    Default: 'subnet-0e50279d1034d1c43,subnet-067f1e35d87b2659b,subnet-0a48c2c09a9ecbfad'
     Description: Subnets do VPC para o RDS (minimo 2 AZs)
+  LambdaRoleArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN de um IAM Role existente para as Lambdas. Vazio = a stack CRIA os roles
+      (exige --capabilities CAPABILITY_IAM). Em conta restrita (ex.: IBMEC governance,
+      onde criar role e bloqueado), informe um role ja provisionado e o deploy nao
+      precisa criar nenhum IAM.
+
+Conditions:
+  # Sem LambdaRoleArn informado, a stack cria os IAM Roles das Lambdas.
+  CreateLambdaRoles: !Equals [!Ref LambdaRoleArn, '']
 
 Resources:
   # Security Group para o RDS
@@ -59,7 +86,7 @@ Resources:
       AllocatedStorage: 20
       DBInstanceClass: db.t3.micro
       Engine: mysql
-      EngineVersion: "8.0"
+      EngineVersion: '8.0.42'
       MasterUsername: !Ref DBUsername
       MasterUserPassword: !Ref DBPassword
       PubliclyAccessible: true
@@ -70,21 +97,116 @@ Resources:
   # S3 Bucket para materiais, certificados, telemetria e respostas
   KlassBucket:
     Type: AWS::S3::Bucket
+    # DependsOn garante que a Permission do S3->Lambda exista ANTES de o bucket
+    # configurar a notificacao; caso contrario o CloudFormation falha ao validar
+    # a NotificationConfiguration.
+    DependsOn: FraudLambdaS3InvokePermission
     Properties:
-      BucketName: !Sub "klass-materials-${AWS::AccountId}"
+      BucketName: !Sub 'klass-materials-${AWS::AccountId}'
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders:
-              - "*"
+              - '*'
             AllowedMethods:
               - GET
               - PUT
               - POST
               - DELETE
             AllowedOrigins:
-              - "*"
-            ExposeHeaders:
+              - '*'
+            ExposedHeaders:
               - ETag
+      # Dispara a Lambda de antifraude a cada upload de foto da webcam.
+      # Prefixo restrito a telemetria/photocam/ para nao reagir a outros uploads.
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Function: !GetAtt KlassFraudLambda.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: 'telemetria/photocam/'
+
+  # ---------------------------------------------------------------------------
+  # IAM Roles das Lambdas — CRIADOS pelo template (sem ARN hardcoded de outra conta).
+  # O deploy exige --capabilities CAPABILITY_IAM.
+  # ---------------------------------------------------------------------------
+
+  # Role das Lambdas de aplicacao (Express + certificado): S3 + invocar Lambda + logs.
+  KlassLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: CreateLambdaRoles
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: klass-app-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub 'arn:aws:s3:::klass-materials-${AWS::AccountId}/*'
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: '*'
+              # Alerta de colagem: a klass-app publica/inscreve no topico de fraude.
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                  - sns:Subscribe
+                  - sns:SetSubscriptionAttributes
+                  - sns:ListSubscriptionsByTopic
+                Resource:
+                  - !Ref KlassFraudTopic
+                  - !Sub '${KlassFraudTopic}:*'
+
+  # Role da Lambda de antifraude: ler S3 + Rekognition + publicar/inscrever no SNS + logs.
+  KlassFraudLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: CreateLambdaRoles
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: klass-fraud-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::klass-materials-${AWS::AccountId}/*'
+              - Effect: Allow
+                Action:
+                  - rekognition:DetectFaces
+                  - rekognition:CompareFaces
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                  - sns:Subscribe
+                  - sns:SetSubscriptionAttributes
+                  - sns:ListSubscriptionsByTopic
+                Resource:
+                  - !Ref KlassFraudTopic
+                  - !Sub '${KlassFraudTopic}:*'
 
   # Lambda principal: roda o Express via serverless-http
   KlassAppLambda:
@@ -92,40 +214,110 @@ Resources:
     Properties:
       FunctionName: klass-app
       Handler: dist/lambda.handler
-      Role: arn:aws:iam::278746617329:role/ibmec/service-roles/ibmec-e87072cc-660fe9-lambda-role
+      Role: !If [CreateLambdaRoles, !GetAtt KlassLambdaRole.Arn, !Ref LambdaRoleArn]
       Code:
         S3Bucket: !Ref AppS3Bucket
         S3Key: !Ref AppS3Key
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Timeout: 30
       MemorySize: 512
       Environment:
         Variables:
           DB_HOST: !GetAtt KlassDB.Endpoint.Address
-          DB_PORT: "3306"
+          DB_PORT: '3306'
           DB_USER: !Ref DBUsername
           DB_PASSWORD: !Ref DBPassword
           DB_NAME: !Ref DBName
-          S3_BUCKET_NAME: !Sub "klass-materials-${AWS::AccountId}"
+          S3_BUCKET_NAME: !Sub 'klass-materials-${AWS::AccountId}'
           LAMBDA_CERTIFICATE_FUNCTION: !Ref CertificatesLambda
+          SNS_TOPIC_ARN: !Ref KlassFraudTopic
 
-  # Lambda de certificados (placeholder)
+  # Lambda de certificados: monta o HTML personalizado por disciplina e grava no S3.
   CertificatesLambda:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: klass-generate-certificate
       Handler: index.handler
-      Role: arn:aws:iam::278746617329:role/ibmec/service-roles/ibmec-e87072cc-660fe9-lambda-role
+      Role: !If [CreateLambdaRoles, !GetAtt KlassLambdaRole.Arn, !Ref LambdaRoleArn]
       Code:
-        ZipFile: |
-          exports.handler = async (event) => {
-              return {
-                  statusCode: 200,
-                  body: JSON.stringify('Lambda placeholder de certificados'),
-              };
-          };
-      Runtime: nodejs20.x
+        S3Bucket: !Ref AppS3Bucket
+        S3Key: !Ref CertLambdaS3Key
+      Runtime: nodejs22.x
       Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Sub 'klass-materials-${AWS::AccountId}'
+
+  # ---------------------------------------------------------------------------
+  # MODULO ANTIFRAUDE (event-driven)
+  # ---------------------------------------------------------------------------
+  # As permissoes das lambdas vem dos IAM Roles criados acima (KlassLambdaRole e
+  # KlassFraudLambdaRole) — sem ARN hardcoded de outra conta. O deploy precisa de
+  # --capabilities CAPABILITY_IAM. A Lambda de fraude alcanca o RDS pela rede
+  # (RDS publico); o acesso ao MySQL e por usuario/senha, nao por IAM.
+  # ---------------------------------------------------------------------------
+
+  # Topico SNS para alertas de fraude
+  KlassFraudTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: klass-fraud-alerts
+      DisplayName: Klass Fraud Alerts
+
+  # Assinatura de demonstracao por e-mail.
+  # OBS: a confirmacao desta assinatura precisa ser feita MANUALMENTE pelo
+  # destinatario (clicando no link enviado por e-mail pela AWS). Em tempo de
+  # execucao, a Lambda de antifraude TAMBEM assina dinamicamente o e-mail do
+  # professor responsavel pela prova (consultado no RDS) usando sns:Subscribe.
+  KlassFraudEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref KlassFraudTopic
+      Protocol: email
+      Endpoint: !Ref ProfessorAlertEmail
+
+  # Lambda disparada por evento do S3 ao subir uma foto da webcam.
+  # Usa o KlassFraudLambdaRole (S3 read + Rekognition + SNS).
+  # Faz analise Rekognition, consulta o RDS e alerta o professor via SNS.
+  KlassFraudLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: klass-fraud-analyzer
+      Handler: index.handler
+      Role: !If [CreateLambdaRoles, !GetAtt KlassFraudLambdaRole.Arn, !Ref LambdaRoleArn]
+      Code:
+        S3Bucket: !Ref AppS3Bucket
+        S3Key: !Ref FraudLambdaS3Key
+      Runtime: nodejs22.x
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt KlassDB.Endpoint.Address
+          DB_PORT: '3306'
+          DB_USER: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+          DB_NAME: !Ref DBName
+          S3_BUCKET_NAME: !Sub 'klass-materials-${AWS::AccountId}'
+          SNS_TOPIC_ARN: !Ref KlassFraudTopic
+          FRAUD_THRESHOLD: !Ref FraudThreshold
+          # AWS_REGION e injetado automaticamente pelo runtime Lambda (e uma chave
+          # RESERVADA; declara-la em Variables faz o deploy falhar). O SDK ja le
+          # process.env.AWS_REGION normalmente.
+
+  # Permissao para o S3 invocar a Lambda de antifraude.
+  # Usamos o nome FIXO do bucket via !Sub (e nao !Ref KlassBucket) para evitar
+  # dependencia circular: o bucket depende desta Permission (DependsOn) e a
+  # Permission precisa do SourceArn do bucket.
+  FraudLambdaS3InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt KlassFraudLambda.Arn
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub 'arn:aws:s3:::klass-materials-${AWS::AccountId}'
 
   # Permissao para o API Gateway invocar a Lambda
   ApiGatewayLambdaPermission:
@@ -135,9 +327,9 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !GetAtt KlassAppLambda.Arn
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${KlassHttpApi}/*"
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${KlassHttpApi}/*'
 
-  # API Gateway HTTP API v2
+  # API Gateway HTTP API v2 — CORS restrito ao dominio do CloudFront + localhost:5173 (dev).
   KlassHttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -145,7 +337,8 @@ Resources:
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins:
-          - "*"
+          - !Sub 'https://${KlassFrontDistribution.DomainName}'
+          - 'http://localhost:5173'
         AllowMethods:
           - GET
           - POST
@@ -153,7 +346,7 @@ Resources:
           - DELETE
           - OPTIONS
         AllowHeaders:
-          - "*"
+          - '*'
         MaxAge: 300
 
   # Integracao Lambda Proxy
@@ -162,29 +355,120 @@ Resources:
     Properties:
       ApiId: !Ref KlassHttpApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${KlassAppLambda.Arn}/invocations"
-      PayloadFormatVersion: "2.0"
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${KlassAppLambda.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
 
   # Rota padrao: captura qualquer path e metodo
   KlassApiDefaultRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref KlassHttpApi
-      RouteKey: "$default"
-      Target: !Sub "integrations/${KlassApiIntegration}"
+      RouteKey: '$default'
+      Target: !Sub 'integrations/${KlassApiIntegration}'
 
   # Stage com auto-deploy
   KlassApiStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
       ApiId: !Ref KlassHttpApi
-      StageName: "$default"
+      StageName: '$default'
       AutoDeploy: true
+
+  # ---------------------------------------------------------------------------
+  # HOSTING DO FRONTEND (Vite + React SPA): S3 privado + CloudFront (HTTPS).
+  # O HTTPS habilita getUserMedia/getDisplayMedia (camera/tela da prova).
+  # ---------------------------------------------------------------------------
+
+  # Bucket PRIVADO: so e lido pelo CloudFront via OAC.
+  KlassFrontBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'klass-frontend-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  # Origin Access Control (OAC) — assina as requisicoes do CloudFront ao S3 (SigV4).
+  KlassFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'klass-front-oac-${AWS::AccountId}'
+        Description: OAC para o CloudFront ler o bucket privado do front Klass
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Distribuicao CloudFront (HTTPS). CustomErrorResponses (403/404 -> index.html)
+  # fazem o BrowserRouter resolver as rotas da SPA no client.
+  KlassFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Klass frontend (Vite SPA) distribution
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        Origins:
+          - Id: KlassFrontS3Origin
+            DomainName: !GetAtt KlassFrontBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt KlassFrontOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: KlassFrontS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          # Managed-CachingOptimized (cache padrao recomendado para SPA estatica).
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # Politica do bucket: leitura somente pelo CloudFront desta distribuicao (OAC).
+  KlassFrontBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref KlassFrontBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::klass-frontend-${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${KlassFrontDistribution}'
 
 Outputs:
   ApiGatewayUrl:
     Description: URL publica do API Gateway
-    Value: !Sub "https://${KlassHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+    Value: !Sub 'https://${KlassHttpApi}.execute-api.${AWS::Region}.amazonaws.com'
   RDSAddress:
     Description: Endpoint do banco de dados RDS
     Value: !GetAtt KlassDB.Endpoint.Address
@@ -194,3 +478,15 @@ Outputs:
   CertificateLambdaName:
     Description: Nome da Lambda de certificados
     Value: !Ref CertificatesLambda
+  FrontUrl:
+    Description: URL publica do frontend (CloudFront, HTTPS) — habilita camera/tela
+    Value: !Sub 'https://${KlassFrontDistribution.DomainName}'
+  FrontBucketName:
+    Description: Nome do bucket S3 do front (usar no aws s3 sync)
+    Value: !Ref KlassFrontBucket
+  FrontDistributionId:
+    Description: ID da distribuicao CloudFront do front (usar na invalidacao de cache)
+    Value: !Ref KlassFrontDistribution
+  FraudTopicArn:
+    Description: ARN do topico SNS de alertas de fraude
+    Value: !Ref KlassFraudTopic

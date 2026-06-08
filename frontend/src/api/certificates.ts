@@ -1,19 +1,21 @@
 import type { Certificate } from '@/types';
-import { certStore, uuid } from '@/lib/localStore';
+import api from './client';
 
-export async function generateCertificate(enrollmentId: string): Promise<Certificate> {
-  const existing = certStore.list().find((c) => c.enrollmentId === enrollmentId);
-  if (existing) return existing;
-  return certStore.create({
-    id: uuid(),
-    enrollmentId,
-    s3Key: `certificates/${enrollmentId}.pdf`,
-    issuedAt: new Date().toISOString(),
-  });
+interface CertificateWithUrl extends Certificate {
+  downloadUrl: string;
 }
 
-export async function getCertificateById(id: string): Promise<Certificate> {
-  const c = certStore.findById(id);
-  if (!c) throw new Error('Certificado não encontrado');
-  return c;
+export async function generateCertificate(enrollmentId: string): Promise<CertificateWithUrl> {
+  const { data } = await api.post<CertificateWithUrl>(`/certificates/enrollment/${enrollmentId}`);
+  return data;
+}
+
+export async function getCertificate(enrollmentId: string): Promise<CertificateWithUrl> {
+  const { data } = await api.get<CertificateWithUrl>(`/certificates/${enrollmentId}`);
+  return data;
+}
+
+export async function getCertificateById(id: string): Promise<CertificateWithUrl> {
+  const { data } = await api.get<CertificateWithUrl>(`/certificates/${id}`);
+  return data;
 }

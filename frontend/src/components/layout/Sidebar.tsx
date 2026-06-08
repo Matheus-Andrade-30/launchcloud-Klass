@@ -40,6 +40,7 @@ const professorNav: NavItem[] = [
 const alunoNav: NavItem[] = [
   { label: 'Dashboard', path: '/aluno', icon: <LayoutDashboard size={18} /> },
   { label: 'Minhas Turmas', path: '/aluno/turmas', icon: <BookMarked size={18} /> },
+  { label: 'Provas', path: '/aluno/provas', icon: <ClipboardList size={18} /> },
   { label: 'Notas & Certificados', path: '/aluno/notas', icon: <GraduationCap size={18} /> },
 ];
 

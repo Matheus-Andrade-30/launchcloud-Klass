@@ -1,0 +1,17 @@
+{
+  "name": "klass-fraud-lambda",
+  "version": "1.0.0",
+  "description": "Lambda de deteccao de fraude disparada por evento S3 (telemetria/photocam): Rekognition + RDS + SNS",
+  "main": "index.js",
+  "type": "commonjs",
+  "private": true,
+  "scripts": {
+    "package": "zip -r ../fraud-lambda.zip ."
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.1053.0",
+    "@aws-sdk/client-sns": "^3.1053.0",
+    "mysql2": "^3.20.0"
+  }
+}

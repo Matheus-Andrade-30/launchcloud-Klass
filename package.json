@@ -12,6 +12,7 @@
     "start": "node dist/infrastructure/http/server.js",
     "dev": "tsx watch src/infrastructure/http/server.ts",
     "build": "tsc",
+    "package:back": "rm -rf dist lambda-package klass-lambda.zip && yarn build && mkdir -p lambda-package && cp -R dist lambda-package/dist && cp package.json yarn.lock lambda-package/ && (cd lambda-package && yarn install --production --frozen-lockfile --modules-folder ./node_modules) && (cd lambda-package && zip -qr ../klass-lambda.zip dist node_modules package.json) && echo 'klass-lambda.zip pronto (handler: dist/lambda.handler)'",
     "lint": "eslint \"src/**/*.{js,ts}\" --fix",
     "format": "prettier --write \"src/**/*.{js,ts,json,md}\""
   },
@@ -51,6 +52,7 @@
     "@aws-sdk/client-lambda": "^3.1042.0",
     "@aws-sdk/client-rekognition": "^3.1053.0",
     "@aws-sdk/client-s3": "^3.1042.0",
+    "@aws-sdk/client-sns": "^3.1053.0",
     "@aws-sdk/s3-request-presigner": "^3.1042.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",

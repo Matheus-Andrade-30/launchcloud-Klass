@@ -1,5 +1,5 @@
 import type { Enrollment, EnrollmentStatus } from '@/types';
-import { enrollmentStore, uuid } from '@/lib/localStore';
+import api from './client';
 
 export interface CreateEnrollmentPayload {
   studentId: string;
@@ -7,29 +7,28 @@ export interface CreateEnrollmentPayload {
 }
 
 export async function listEnrollments(): Promise<Enrollment[]> {
-  return enrollmentStore.list();
+  const { data } = await api.get<Enrollment[]>('/enrollments');
+  return data;
 }
 
 export async function getEnrollmentById(id: string): Promise<Enrollment> {
-  const e = enrollmentStore.findById(id);
-  if (!e) throw new Error('Matrícula não encontrada');
-  return e;
+  const { data } = await api.get<Enrollment>(`/enrollments/${id}`);
+  return data;
 }
 
 export async function createEnrollment(payload: CreateEnrollmentPayload): Promise<Enrollment> {
-  return enrollmentStore.create({
-    id: uuid(),
-    studentId: payload.studentId,
-    classId: payload.classId,
-    status: 'active',
-    enrolledAt: new Date().toISOString(),
-  });
+  const { data } = await api.post<Enrollment>('/enrollments', payload);
+  return data;
 }
 
-export async function updateEnrollmentStatus(id: string, status: EnrollmentStatus): Promise<Enrollment> {
-  return enrollmentStore.update(id, { status });
+export async function updateEnrollmentStatus(
+  id: string,
+  status: EnrollmentStatus,
+): Promise<Enrollment> {
+  const { data } = await api.patch<Enrollment>(`/enrollments/${id}/status`, { status });
+  return data;
 }
 
 export async function deleteEnrollment(id: string): Promise<void> {
-  enrollmentStore.remove(id);
+  await api.delete(`/enrollments/${id}`);
 }

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { listGrades, createGrade } from '@/api/grades';
+import { listGrades, createGrade, updateGrade } from '@/api/grades';
 import { listEnrollments } from '@/api/enrollments';
 import { listUsers } from '@/api/users';
 import { listClasses } from '@/api/classes';
@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageSpinner } from '@/components/ui/spinner';
 import { formatDate } from '@/lib/utils';
+import type { Grade } from '@/types';
 
 const schema = z.object({
   enrollmentId: z.string().min(1, 'Matrícula obrigatória'),
@@ -33,6 +34,7 @@ export default function ProfessorGrades() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Grade | null>(null);
   const [certLoading, setCertLoading] = useState<string | null>(null);
 
   const { data: grades, isLoading } = useQuery({ queryKey: ['grades'], queryFn: listGrades });
@@ -52,8 +54,30 @@ export default function ProfessorGrades() {
 
   const createMut = useMutation({
     mutationFn: (data: FormData) => createGrade({ ...data, teacherId: user!.id, notes: data.notes ?? '' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['grades'] }); setOpen(false); reset(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['grades'] }); closeDialog(); },
   });
+
+  const updateMut = useMutation({
+    mutationFn: (data: FormData) =>
+      updateGrade(editing!.id, {
+        grade: data.grade,
+        attendance: data.attendance,
+        notes: data.notes ?? '',
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['grades'] }); closeDialog(); },
+  });
+
+  function closeDialog() {
+    setOpen(false);
+    setEditing(null);
+    reset();
+  }
+
+  function openEdit(g: Grade) {
+    setEditing(g);
+    reset({ enrollmentId: g.enrollmentId, grade: g.grade, attendance: g.attendance, notes: g.notes ?? '' });
+    setOpen(true);
+  }
 
   async function handleCert(enrollmentId: string) {
     setCertLoading(enrollmentId);
@@ -88,7 +112,7 @@ export default function ProfessorGrades() {
           <h1 className="text-2xl font-bold text-gray-900">Notas</h1>
           <p className="text-sm text-gray-500">{myGrades.length} nota(s) registrada(s)</p>
         </div>
-        <Button onClick={() => { reset(); setOpen(true); }}>
+        <Button onClick={() => { setEditing(null); reset(); setOpen(true); }}>
           <Plus size={16} />
           Lançar Nota
         </Button>
@@ -123,16 +147,22 @@ export default function ProfessorGrades() {
                 <TableCell className="max-w-xs truncate text-gray-500">{g.notes || '—'}</TableCell>
                 <TableCell className="text-gray-500">{formatDate(g.createdAt)}</TableCell>
                 <TableCell className="text-right">
-                  {g.grade >= 7 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={certLoading === g.enrollmentId}
-                      onClick={() => handleCert(g.enrollmentId)}
-                    >
-                      {certLoading === g.enrollmentId ? 'Gerando...' : 'Gerar'}
+                  <div className="flex items-center justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(g)}>
+                      <Pencil size={14} />
+                      Editar
                     </Button>
-                  )}
+                    {g.grade >= 7 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={certLoading === g.enrollmentId}
+                        onClick={() => handleCert(g.enrollmentId)}
+                      >
+                        {certLoading === g.enrollmentId ? 'Gerando...' : 'Gerar'}
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -140,13 +170,13 @@ export default function ProfessorGrades() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : closeDialog())}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Lançar Nota</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit((d) => createMut.mutateAsync(d))} className="space-y-4 pt-2">
+          <DialogHeader><DialogTitle>{editing ? 'Editar Nota' : 'Lançar Nota'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit((d) => (editing ? updateMut.mutateAsync(d) : createMut.mutateAsync(d)))} className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <Label>Aluno / Matrícula</Label>
-              <Select {...register('enrollmentId')}>
+              <Select {...register('enrollmentId')} disabled={!!editing}>
                 <option value="">Selecione</option>
                 {myEnrollments.map((e) => {
                   const name = users?.find((u) => u.id === e.studentId)?.name ?? e.studentId;
@@ -173,7 +203,7 @@ export default function ProfessorGrades() {
               <Input placeholder="Opcional" {...register('notes')} />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" type="button" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button variant="outline" type="button" onClick={closeDialog}>Cancelar</Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? 'Salvando...' : 'Salvar'}
               </Button>

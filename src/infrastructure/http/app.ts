@@ -38,13 +38,14 @@ import { CreateGradeUseCase } from '../../application/grade/CreateGradeUseCase';
 import { ListGradesUseCase } from '../../application/grade/ListGradesUseCase';
 import { GetGradeByIdUseCase } from '../../application/grade/GetGradeByIdUseCase';
 import { ListGradesByEnrollmentUseCase } from '../../application/grade/ListGradesByEnrollmentUseCase';
+import { UpdateGradeUseCase } from '../../application/grade/UpdateGradeUseCase';
 
 import { GenerateCertificateUseCase } from '../../application/certificate/GenerateCertificateUseCase';
 import { GetCertificateUseCase } from '../../application/certificate/GetCertificateUseCase';
 
 import { S3Service } from '../services/S3Service';
 import { LambdaService } from '../services/LambdaService';
-import { RekognitionService } from '../services/RekognitionService';
+import { SNSService } from '../services/SNSService';
 
 import { MySQLProvaRepository } from '../database/repositories/MySQLProvaRepository';
 import { MySQLQuestaoRepository } from '../database/repositories/MySQLQuestaoRepository';
@@ -55,6 +56,10 @@ import { MySQLTelemetriaScreenshotRepository } from '../database/repositories/My
 import { GetProvaUseCase } from '../../application/prova/GetProvaUseCase';
 import { CreateProvaUseCase } from '../../application/prova/CreateProvaUseCase';
 import { MatricularAlunoProvaUseCase } from '../../application/prova/MatricularAlunoProvaUseCase';
+import { ListProvasByAlunoUseCase } from '../../application/prova/ListProvasByAlunoUseCase';
+import { ListProvasByProfessorUseCase } from '../../application/prova/ListProvasByProfessorUseCase';
+import { IniciarProvaUseCase } from '../../application/prova/IniciarProvaUseCase';
+import { FinalizarProvaUseCase } from '../../application/prova/FinalizarProvaUseCase';
 import { CreateQuestaoUseCase } from '../../application/questao/CreateQuestaoUseCase';
 import { UpdateQuestaoUseCase } from '../../application/questao/UpdateQuestaoUseCase';
 import { SaveRespostaVersaoUseCase } from '../../application/antifraude/SaveRespostaVersaoUseCase';
@@ -87,7 +92,7 @@ import { swaggerSpec } from './swagger';
 
 export async function createApp(app: Express): Promise<Express> {
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '15mb' }));
 
   await initDatabase();
 
@@ -102,7 +107,7 @@ export async function createApp(app: Express): Promise<Express> {
   // Services
   const s3Service = new S3Service();
   const lambdaService = new LambdaService();
-  const rekognitionService = new RekognitionService();
+  const snsService = new SNSService();
 
   // Repositories — Antifraude
   const provaRepository = new MySQLProvaRepository();
@@ -158,6 +163,7 @@ export async function createApp(app: Express): Promise<Express> {
   );
   const listGradesUseCase = new ListGradesUseCase(gradeRepository);
   const getGradeByIdUseCase = new GetGradeByIdUseCase(gradeRepository);
+  const updateGradeUseCase = new UpdateGradeUseCase(gradeRepository);
   const listGradesByEnrollmentUseCase = new ListGradesByEnrollmentUseCase(
     gradeRepository,
     enrollmentRepository,
@@ -171,6 +177,7 @@ export async function createApp(app: Express): Promise<Express> {
     classRepository,
     lambdaService,
     s3Service,
+    gradeRepository,
   );
   const getCertificateUseCase = new GetCertificateUseCase(certificateRepository, s3Service);
 
@@ -207,6 +214,7 @@ export async function createApp(app: Express): Promise<Express> {
     listGradesUseCase,
     getGradeByIdUseCase,
     listGradesByEnrollmentUseCase,
+    updateGradeUseCase,
   );
   const certificateController = new CertificateController(
     generateCertificateUseCase,
@@ -226,16 +234,54 @@ export async function createApp(app: Express): Promise<Express> {
   const getProvaUseCase = new GetProvaUseCase(provaRepository);
   const createProvaUseCase = new CreateProvaUseCase(provaRepository, userRepository);
   const matricularAlunoUseCase = new MatricularAlunoProvaUseCase(provaRepository, userRepository);
-  const createQuestaoUseCase = new CreateQuestaoUseCase(questaoRepository, provaRepository, userRepository);
-  const updateQuestaoUseCase = new UpdateQuestaoUseCase(questaoRepository, provaRepository, userRepository);
-  const saveRespostaVersaoUseCase = new SaveRespostaVersaoUseCase(respostaVersaoRepository, s3Service);
-  const savePhotocamUseCase = new SavePhotocamUseCase(photocamRepository, s3Service, rekognitionService);
+  const listProvasByAlunoUseCase = new ListProvasByAlunoUseCase(provaRepository);
+  const listProvasByProfessorUseCase = new ListProvasByProfessorUseCase(provaRepository);
+  const iniciarProvaUseCase = new IniciarProvaUseCase(provaRepository);
+  const finalizarProvaUseCase = new FinalizarProvaUseCase(provaRepository);
+  const createQuestaoUseCase = new CreateQuestaoUseCase(
+    questaoRepository,
+    provaRepository,
+    userRepository,
+  );
+  const updateQuestaoUseCase = new UpdateQuestaoUseCase(
+    questaoRepository,
+    provaRepository,
+    userRepository,
+  );
+  const saveRespostaVersaoUseCase = new SaveRespostaVersaoUseCase(
+    respostaVersaoRepository,
+    s3Service,
+    snsService,
+    provaRepository,
+    userRepository,
+  );
+  const savePhotocamUseCase = new SavePhotocamUseCase(photocamRepository, s3Service);
   const saveScreenshotUseCase = new SaveScreenshotUseCase(screenshotRepository, s3Service);
-  const getRelatorioProvaUseCase = new GetRelatorioProvaUseCase(provaRepository, respostaVersaoRepository, photocamRepository, screenshotRepository);
+  const getRelatorioProvaUseCase = new GetRelatorioProvaUseCase(
+    provaRepository,
+    respostaVersaoRepository,
+    photocamRepository,
+    screenshotRepository,
+  );
 
   // Controllers — Antifraude
-  const provaController = new ProvaController(getProvaUseCase, createProvaUseCase, matricularAlunoUseCase, createQuestaoUseCase, updateQuestaoUseCase);
-  const antiFraudeController = new AntiFraudeController(saveRespostaVersaoUseCase, savePhotocamUseCase, saveScreenshotUseCase, getRelatorioProvaUseCase);
+  const provaController = new ProvaController(
+    getProvaUseCase,
+    createProvaUseCase,
+    matricularAlunoUseCase,
+    listProvasByAlunoUseCase,
+    listProvasByProfessorUseCase,
+    iniciarProvaUseCase,
+    finalizarProvaUseCase,
+    createQuestaoUseCase,
+    updateQuestaoUseCase,
+  );
+  const antiFraudeController = new AntiFraudeController(
+    saveRespostaVersaoUseCase,
+    savePhotocamUseCase,
+    saveScreenshotUseCase,
+    getRelatorioProvaUseCase,
+  );
 
   // Routes
   app.use('/auth', authRoutes(userRepository));

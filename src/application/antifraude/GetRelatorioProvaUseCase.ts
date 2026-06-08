@@ -55,7 +55,10 @@ export class GetRelatorioProvaUseCase {
       Array.from(alunosSet).map(async (alunoId) => {
         const respostasAluno = suspeitosResposta.filter((r) => r.alunoId === alunoId);
         const fotosAluno = fotosComFlags.filter((f) => f.alunoId === alunoId);
-        const totalScreenshots = await this.screenshotRepository.countByProvaIdAndAlunoId(provaId, alunoId);
+        const totalScreenshots = await this.screenshotRepository.countByProvaIdAndAlunoId(
+          provaId,
+          alunoId,
+        );
 
         const eventos: EventoFraude[] = [
           ...respostasAluno.map((r) => ({
@@ -84,7 +87,8 @@ export class GetRelatorioProvaUseCase {
           ),
         ].sort((a, b) => new Date(a.horario).getTime() - new Date(b.horario).getTime());
 
-        const totalFlags = respostasAluno.length + fotosAluno.reduce((acc, f) => acc + f.flags.length, 0);
+        const totalFlags =
+          respostasAluno.length + fotosAluno.reduce((acc, f) => acc + f.flags.length, 0);
         const nivelRisco: 'baixo' | 'medio' | 'alto' =
           totalFlags >= 5 ? 'alto' : totalFlags >= 2 ? 'medio' : 'baixo';
 

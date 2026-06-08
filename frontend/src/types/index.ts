@@ -76,6 +76,18 @@ export interface Prova {
   duracaoMinutos: number;
   questoes?: Questao[];
   createdAt: string;
+  iniciadoEm?: string | null;
+  finalizadoEm?: string | null;
+}
+
+export interface TelemetriaResultado {
+  id: string;
+  alunoId: string;
+  provaId: string;
+  questaoId: string;
+  s3Key: string;
+  timestamp: number;
+  horario: string;
 }
 
 export interface RespostaVersao {
@@ -92,18 +104,32 @@ export interface RespostaVersao {
   horario: string;
 }
 
-export interface RelatorioProva {
-  provaId: string;
-  totalAlunos: number;
-  alertas: RelatorioAlerta[];
+export type NivelRisco = 'baixo' | 'medio' | 'alto';
+
+export interface EventoFraude {
+  tipo: string;
+  questaoId: string;
+  horario: string;
+  s3Key: string;
+  detalhes: Record<string, unknown>;
 }
 
-export interface RelatorioAlerta {
+export interface RelatorioAluno {
   alunoId: string;
-  questaoId: string;
-  tipo: string;
-  detalhe: string;
-  timestamp: string;
+  totalVersoesSuspeitas: number;
+  totalFotosComFlags: number;
+  totalScreenshots: number;
+  eventos: EventoFraude[];
+  nivelRisco: NivelRisco;
+}
+
+export interface RelatorioProva {
+  provaId: string;
+  titulo: string;
+  geradoEm: string;
+  totalAlunos: number;
+  alunosComAlerta: number;
+  alunos: RelatorioAluno[];
 }
 
 export interface AuthState {

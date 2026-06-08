@@ -42,6 +42,16 @@ export class MySQLGradeRepository implements IGradeRepository {
     return grade;
   }
 
+  async update(grade: Grade): Promise<Grade> {
+    await pool.execute('UPDATE grades SET grade = ?, attendance = ?, notes = ? WHERE id = ?', [
+      grade.grade,
+      grade.attendance,
+      grade.notes,
+      grade.id,
+    ]);
+    return grade;
+  }
+
   async findAll(): Promise<Grade[]> {
     const [rows] = await pool.execute<GradeRow[]>('SELECT * FROM grades');
     return rows.map(rowToGrade);

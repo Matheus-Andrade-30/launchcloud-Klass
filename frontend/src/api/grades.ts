@@ -1,5 +1,5 @@
 import type { Grade } from '@/types';
-import { gradeStore, uuid } from '@/lib/localStore';
+import api from './client';
 
 export interface CreateGradePayload {
   enrollmentId: string;
@@ -10,27 +10,32 @@ export interface CreateGradePayload {
 }
 
 export async function listGrades(): Promise<Grade[]> {
-  return gradeStore.list();
+  const { data } = await api.get<Grade[]>('/grades');
+  return data;
 }
 
 export async function getGradeById(id: string): Promise<Grade> {
-  const g = gradeStore.findById(id);
-  if (!g) throw new Error('Nota não encontrada');
-  return g;
+  const { data } = await api.get<Grade>(`/grades/${id}`);
+  return data;
 }
 
 export async function listGradesByEnrollment(enrollmentId: string): Promise<Grade[]> {
-  return gradeStore.list().filter((g) => g.enrollmentId === enrollmentId);
+  const { data } = await api.get<Grade[]>(`/grades/enrollment/${enrollmentId}`);
+  return data;
 }
 
 export async function createGrade(payload: CreateGradePayload): Promise<Grade> {
-  return gradeStore.create({
-    id: uuid(),
-    enrollmentId: payload.enrollmentId,
-    teacherId: payload.teacherId,
-    grade: payload.grade,
-    attendance: payload.attendance,
-    notes: payload.notes ?? '',
-    createdAt: new Date().toISOString(),
-  });
+  const { data } = await api.post<Grade>('/grades', payload);
+  return data;
+}
+
+export interface UpdateGradePayload {
+  grade?: number;
+  attendance?: number;
+  notes?: string;
+}
+
+export async function updateGrade(id: string, payload: UpdateGradePayload): Promise<Grade> {
+  const { data } = await api.put<Grade>(`/grades/${id}`, payload);
+  return data;
 }

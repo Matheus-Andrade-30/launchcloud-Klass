@@ -113,6 +113,7 @@ export async function initDatabase(): Promise<void> {
         pontuacao DECIMAL(5,2) NOT NULL,
         ordem INT NOT NULL,
         created_at DATETIME NOT NULL,
+        opcoes JSON NULL,
         FOREIGN KEY (prova_id) REFERENCES provas(id)
       )
     `);
@@ -122,11 +123,30 @@ export async function initDatabase(): Promise<void> {
         id VARCHAR(36) PRIMARY KEY,
         prova_id VARCHAR(36) NOT NULL,
         aluno_id VARCHAR(36) NOT NULL,
+        iniciado_em DATETIME NULL,
+        finalizado_em DATETIME NULL,
         UNIQUE KEY unique_matricula (prova_id, aluno_id),
         FOREIGN KEY (prova_id) REFERENCES provas(id),
         FOREIGN KEY (aluno_id) REFERENCES users(id)
       )
     `);
+
+    // ALTER defensivo para bancos já existentes (MySQL não suporta ADD COLUMN IF NOT EXISTS).
+    try {
+      await conn.execute('ALTER TABLE provas_alunos ADD COLUMN iniciado_em DATETIME NULL');
+    } catch {
+      // Coluna já existe — ignora erro de coluna duplicada.
+    }
+    try {
+      await conn.execute('ALTER TABLE provas_alunos ADD COLUMN finalizado_em DATETIME NULL');
+    } catch {
+      // Coluna já existe.
+    }
+    try {
+      await conn.execute('ALTER TABLE questoes ADD COLUMN opcoes JSON NULL');
+    } catch {
+      // Coluna já existe.
+    }
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS respostas_versoes (
@@ -190,6 +210,7 @@ export async function initDatabase(): Promise<void> {
         ('u-t1', 'Carlos Mendes',   'carlos.mendes@klass.edu',              'teacher', '2024-01-10'),
         ('u-t2', 'Ana Souza',       'ana.souza@klass.edu',                  'teacher', '2024-01-15'),
         ('u-t3', 'Roberto Lima',    'roberto.lima@klass.edu',               'teacher', '2024-02-01'),
+        ('u-t4', 'Prof. Responsavel (Demo)', '202402630661@alunos.ibmec.edu.br', 'teacher', '2024-01-20'),
         ('u-s1', 'Lucas Oliveira',  'lucas.oliveira@aluno.klass.edu',       'student', '2024-02-10'),
         ('u-s2', 'Mariana Costa',   'mariana.costa@aluno.klass.edu',        'student', '2024-02-11'),
         ('u-s3', 'Pedro Alves',     'pedro.alves@aluno.klass.edu',          'student', '2024-02-12'),
@@ -247,7 +268,7 @@ export async function initDatabase(): Promise<void> {
 
       await conn.execute(`
         INSERT INTO provas (id, titulo, professor_id, data_inicio, data_fim, duracao_minutos, created_at) VALUES
-        ('p-1', 'Prova Final de Matemática',   'u-t1', '2025-01-01 08:00:00', '2030-12-31 23:59:00', 90, '2024-11-01'),
+        ('p-1', 'Prova Final de Matemática',   'u-t4', '2025-01-01 08:00:00', '2030-12-31 23:59:00', 90, '2024-11-01'),
         ('p-2', 'Avaliação de Programação Web', 'u-t2', '2025-01-01 08:00:00', '2030-12-31 23:59:00', 60, '2024-11-02')
       `);
 
@@ -269,7 +290,9 @@ export async function initDatabase(): Promise<void> {
         ('pa-5', 'p-2', 'u-s3')
       `);
 
-      console.log('Database seeded: 11 users, 10 classes, 12 enrollments, 11 grades, 2 provas, 5 questoes');
+      console.log(
+        'Database seeded: 11 users, 10 classes, 12 enrollments, 11 grades, 2 provas, 5 questoes',
+      );
     }
 
     console.log('Database initialized successfully');

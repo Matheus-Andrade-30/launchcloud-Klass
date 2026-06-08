@@ -31,13 +31,22 @@ function EnrollmentGradeRow({
 
   const grade = grades?.[grades.length - 1];
 
+  const [certUrl, setCertUrl] = useState<string | null>(null);
+
   async function handleCert() {
+    // Ja gerado nesta sessao: apenas reabre.
+    if (certUrl) {
+      window.open(certUrl, '_blank', 'noopener');
+      return;
+    }
     setCertLoading(true);
     try {
-      await generateCertificate(enrollmentId);
+      const cert = await generateCertificate(enrollmentId);
       setCertGenerated(true);
+      setCertUrl(cert.downloadUrl);
+      window.open(cert.downloadUrl, '_blank', 'noopener');
     } catch {
-      alert('Erro ao gerar certificado.');
+      alert('Não foi possível gerar o certificado. Tente novamente em alguns segundos.');
     } finally {
       setCertLoading(false);
     }
@@ -89,10 +98,10 @@ function EnrollmentGradeRow({
                 onClick={handleCert}
                 className={certGenerated ? 'border-green-500 text-green-600' : ''}
               >
-                {certGenerated ? (
-                  <><FileCheck size={14} /> Emitido</>
-                ) : certLoading ? (
+                {certLoading ? (
                   'Gerando...'
+                ) : certGenerated ? (
+                  <><FileCheck size={14} /> Ver certificado</>
                 ) : (
                   <><Award size={14} /> Certificado</>
                 )}

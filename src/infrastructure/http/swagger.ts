@@ -738,13 +738,27 @@ const options: swaggerJsdoc.Options = {
           tags: ['Provas'],
           summary: 'Retorna prova com questões para um aluno matriculado',
           parameters: [
-            { name: 'prova_id', in: 'query', required: true, schema: { type: 'string' }, example: 'p-1' },
-            { name: 'aluno_id', in: 'query', required: true, schema: { type: 'string' }, example: 'u-s1' },
+            {
+              name: 'prova_id',
+              in: 'query',
+              required: true,
+              schema: { type: 'string' },
+              example: 'p-1',
+            },
+            {
+              name: 'aluno_id',
+              in: 'query',
+              required: true,
+              schema: { type: 'string' },
+              example: 'u-s1',
+            },
           ],
           responses: {
             200: {
               description: 'Prova com questões',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/ProvaComQuestoes' } } },
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ProvaComQuestoes' } },
+              },
             },
             403: { description: 'Aluno não matriculado nesta prova' },
             404: { description: 'Prova não encontrada' },
@@ -757,7 +771,9 @@ const options: swaggerJsdoc.Options = {
           summary: 'Cria uma nova prova (somente professor)',
           requestBody: {
             required: true,
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateProva' } } },
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/CreateProva' } },
+            },
           },
           responses: {
             201: {
@@ -772,7 +788,9 @@ const options: swaggerJsdoc.Options = {
         post: {
           tags: ['Provas'],
           summary: 'Matricula um aluno em uma prova',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, example: 'p-1' }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' }, example: 'p-1' },
+          ],
           requestBody: {
             required: true,
             content: {
@@ -786,7 +804,14 @@ const options: swaggerJsdoc.Options = {
             },
           },
           responses: {
-            201: { description: 'Aluno matriculado', content: { 'application/json': { schema: { type: 'object', properties: { matriculado: { type: 'boolean' } } } } } },
+            201: {
+              description: 'Aluno matriculado',
+              content: {
+                'application/json': {
+                  schema: { type: 'object', properties: { matriculado: { type: 'boolean' } } },
+                },
+              },
+            },
             403: { description: 'Apenas alunos podem ser matriculados' },
             404: { description: 'Prova ou aluno não encontrado' },
           },
@@ -798,7 +823,9 @@ const options: swaggerJsdoc.Options = {
           summary: 'Adiciona questão a uma prova',
           requestBody: {
             required: true,
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateQuestao' } } },
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/CreateQuestao' } },
+            },
           },
           responses: {
             201: {
@@ -839,21 +866,29 @@ const options: swaggerJsdoc.Options = {
         post: {
           tags: ['Antifraude'],
           summary: 'Salva versão da resposta — detecta cola automaticamente',
-          description: 'Chamado a cada 2-3 segundos durante a prova. Detecta cola quando deltaChars > 100 em velocidade > 50 chars/s. Persiste conteúdo no S3.',
+          description:
+            'Chamado a cada 2-3 segundos durante a prova. Detecta cola quando deltaChars > 100 em velocidade > 50 chars/s. Persiste conteúdo no S3.',
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['aluno_id', 'prova_id', 'questao_id', 'timestamp', 'horario', 'conteudo'],
+                  required: [
+                    'aluno_id',
+                    'prova_id',
+                    'questao_id',
+                    'timestamp',
+                    'horario',
+                    'conteudo',
+                  ],
                   properties: {
                     aluno_id: { type: 'string', example: 'u-s1' },
                     prova_id: { type: 'string', example: 'p-1' },
                     questao_id: { type: 'string', example: 'q-1' },
                     timestamp: { type: 'integer', example: 1716681600000, description: 'Unix ms' },
                     horario: { type: 'string', example: '2025-05-26T10:00:00.000Z' },
-                    conteudo: { type: 'string', example: 'A derivada de f(x) = x² é f\'(x) = 2x.' },
+                    conteudo: { type: 'string', example: "A derivada de f(x) = x² é f'(x) = 2x." },
                   },
                 },
               },
@@ -868,7 +903,10 @@ const options: swaggerJsdoc.Options = {
                     type: 'object',
                     properties: {
                       versaoNum: { type: 'integer' },
-                      suspeito: { type: 'boolean', description: 'true se velocidade de digitação suspeita' },
+                      suspeito: {
+                        type: 'boolean',
+                        description: 'true se velocidade de digitação suspeita',
+                      },
                     },
                   },
                 },
@@ -881,14 +919,22 @@ const options: swaggerJsdoc.Options = {
         post: {
           tags: ['Antifraude'],
           summary: 'Salva foto da câmera e analisa rosto com AWS Rekognition',
-          description: 'Chamado a cada 2-3 segundos. Detecta: sem_rosto, multiplos_rostos, identidade_suspeita (<80% similarity). Persiste imagem no S3.',
+          description:
+            'Chamado a cada 2-3 segundos. Detecta: sem_rosto, multiplos_rostos, identidade_suspeita (<80% similarity). Persiste imagem no S3.',
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['aluno_id', 'prova_id', 'questao_id', 'timestamp', 'horario', 'imagem_base64'],
+                  required: [
+                    'aluno_id',
+                    'prova_id',
+                    'questao_id',
+                    'timestamp',
+                    'horario',
+                    'imagem_base64',
+                  ],
                   properties: {
                     aluno_id: { type: 'string', example: 'u-s1' },
                     prova_id: { type: 'string', example: 'p-1' },
@@ -930,14 +976,24 @@ const options: swaggerJsdoc.Options = {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['aluno_id', 'prova_id', 'questao_id', 'timestamp', 'horario', 'screenshot_base64'],
+                  required: [
+                    'aluno_id',
+                    'prova_id',
+                    'questao_id',
+                    'timestamp',
+                    'horario',
+                    'screenshot_base64',
+                  ],
                   properties: {
                     aluno_id: { type: 'string', example: 'u-s1' },
                     prova_id: { type: 'string', example: 'p-1' },
                     questao_id: { type: 'string', example: 'q-1' },
                     timestamp: { type: 'integer', example: 1716681600000 },
                     horario: { type: 'string', example: '2025-05-26T10:00:00.000Z' },
-                    screenshot_base64: { type: 'string', description: 'Print da tela em Base64 (PNG)' },
+                    screenshot_base64: {
+                      type: 'string',
+                      description: 'Print da tela em Base64 (PNG)',
+                    },
                   },
                 },
               },
@@ -946,7 +1002,11 @@ const options: swaggerJsdoc.Options = {
           responses: {
             201: {
               description: 'Screenshot salvo',
-              content: { 'application/json': { schema: { type: 'object', properties: { registrado: { type: 'boolean' } } } } },
+              content: {
+                'application/json': {
+                  schema: { type: 'object', properties: { registrado: { type: 'boolean' } } },
+                },
+              },
             },
           },
         },
@@ -955,12 +1015,23 @@ const options: swaggerJsdoc.Options = {
         get: {
           tags: ['Antifraude'],
           summary: 'Relatório de fraude da prova agrupado por aluno',
-          description: 'Retorna todos os eventos suspeitos (cola, rosto ausente, identidade suspeita) ordenados por nível de risco (alto → baixo).',
-          parameters: [{ name: 'provaId', in: 'path', required: true, schema: { type: 'string' }, example: 'p-1' }],
+          description:
+            'Retorna todos os eventos suspeitos (cola, rosto ausente, identidade suspeita) ordenados por nível de risco (alto → baixo).',
+          parameters: [
+            {
+              name: 'provaId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+              example: 'p-1',
+            },
+          ],
           responses: {
             200: {
               description: 'Relatório gerado',
-              content: { 'application/json': { schema: { $ref: '#/components/schemas/RelatorioProva' } } },
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/RelatorioProva' } },
+              },
             },
             404: { description: 'Prova não encontrada' },
           },

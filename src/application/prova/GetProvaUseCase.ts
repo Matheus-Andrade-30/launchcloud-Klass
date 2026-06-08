@@ -5,6 +5,8 @@ import { Questao } from '../../domain/Questao';
 interface GetProvaOutput {
   prova: Prova;
   questoes: Questao[];
+  iniciadoEm: string | null;
+  finalizadoEm: string | null;
 }
 
 export class GetProvaUseCase {
@@ -21,6 +23,13 @@ export class GetProvaUseCase {
     if (now < result.prova.dataInicio) throw new Error('Prova ainda não iniciou');
     if (now > result.prova.dataFim) throw new Error('Prova já encerrada');
 
-    return result;
+    const matricula = await this.provaRepository.getMatricula(provaId, alunoId);
+
+    return {
+      prova: result.prova,
+      questoes: result.questoes,
+      iniciadoEm: matricula ? matricula.iniciadoEm : null,
+      finalizadoEm: matricula ? matricula.finalizadoEm : null,
+    };
   }
 }

@@ -1,4 +1,8 @@
-import { RekognitionClient, DetectFacesCommand, CompareFacesCommand } from '@aws-sdk/client-rekognition';
+import {
+  RekognitionClient,
+  DetectFacesCommand,
+  CompareFacesCommand,
+} from '@aws-sdk/client-rekognition';
 
 interface FaceAnalysis {
   facesDetectadas: number;

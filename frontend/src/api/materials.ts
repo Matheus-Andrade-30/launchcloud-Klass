@@ -1,5 +1,5 @@
 import type { Material } from '@/types';
-import { materialStore, uuid } from '@/lib/localStore';
+import api from './client';
 
 export interface UploadMaterialPayload {
   title: string;
@@ -9,31 +9,40 @@ export interface UploadMaterialPayload {
   file: File;
 }
 
-export async function listMaterials(): Promise<Material[]> {
-  return materialStore.list();
+interface MaterialWithUrl extends Material {
+  downloadUrl: string;
 }
 
-export async function getMaterialById(id: string): Promise<Material> {
-  const m = materialStore.findById(id);
-  if (!m) throw new Error('Material não encontrado');
-  return m;
+export async function listMaterials(): Promise<Material[]> {
+  const { data } = await api.get<Material[]>('/materials');
+  return data;
+}
+
+export async function getMaterialById(id: string): Promise<MaterialWithUrl> {
+  const { data } = await api.get<MaterialWithUrl>(`/materials/${id}`);
+  return data;
 }
 
 export async function listMaterialsByClass(classId: string): Promise<Material[]> {
-  return materialStore.list().filter((m) => m.classId === classId);
+  const { data } = await api.get<Material[]>(`/materials/class/${classId}`);
+  return data;
 }
 
 export async function uploadMaterial(payload: UploadMaterialPayload): Promise<Material> {
-  // Store file as a local object URL so it can be previewed
-  const localUrl = URL.createObjectURL(payload.file);
-  return materialStore.create({
-    id: uuid(),
-    title: payload.title,
-    description: payload.description,
-    classId: payload.classId,
-    uploadedBy: payload.uploadedBy,
-    s3Key: localUrl,
-    contentType: payload.file.type || 'application/octet-stream',
-    uploadedAt: new Date().toISOString(),
+  const form = new FormData();
+  form.append('file', payload.file);
+  form.append('title', payload.title);
+  form.append('description', payload.description);
+  form.append('classId', payload.classId);
+  form.append('uploadedBy', payload.uploadedBy);
+
+  const { data } = await api.post<Material>('/materials', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
   });
+  return data;
+}
+
+export async function getMaterialDownloadUrl(id: string): Promise<string> {
+  const { data } = await api.get<MaterialWithUrl>(`/materials/${id}`);
+  return data.downloadUrl;
 }

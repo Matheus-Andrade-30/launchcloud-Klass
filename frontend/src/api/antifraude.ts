@@ -1,30 +1,28 @@
 import type { RelatorioProva } from '@/types';
+import api from './client';
 
-// Local-only anti-fraud: persist to localStorage, no backend needed
-
-const PREFIX = 'klass_af_';
-
-function appendLog(key: string, entry: object) {
-  const raw = localStorage.getItem(PREFIX + key);
-  const arr: object[] = raw ? JSON.parse(raw) : [];
-  arr.push(entry);
-  localStorage.setItem(PREFIX + key, JSON.stringify(arr));
+function toEpochMs(timestamp: string | number): number {
+  if (typeof timestamp === 'number') return timestamp;
+  const parsed = Date.parse(timestamp);
+  return Number.isNaN(parsed) ? Date.now() : parsed;
 }
 
 export interface SaveRespostaPayload {
   aluno_id: string;
   prova_id: string;
   questao_id: string;
-  timestamp: string;
+  timestamp: string | number;
   horario: string;
   conteudo: string;
+  colado?: boolean;
+  chars_colados?: number;
 }
 
 export interface SavePhotocamPayload {
   aluno_id: string;
   prova_id: string;
   questao_id: string;
-  timestamp: string;
+  timestamp: string | number;
   horario: string;
   imagem_base64: string;
 }
@@ -33,56 +31,47 @@ export interface SaveScreenshotPayload {
   aluno_id: string;
   prova_id: string;
   questao_id: string;
-  timestamp: string;
+  timestamp: string | number;
   horario: string;
   screenshot_base64: string;
 }
 
 export async function saveRespostaVersao(payload: SaveRespostaPayload): Promise<void> {
-  appendLog(`respostas_${payload.prova_id}`, payload);
+  await api.post('/antifraude/respostas/versoes', {
+    aluno_id: payload.aluno_id,
+    prova_id: payload.prova_id,
+    questao_id: payload.questao_id,
+    timestamp: toEpochMs(payload.timestamp),
+    horario: payload.horario,
+    conteudo: payload.conteudo,
+    colado: payload.colado ?? false,
+    chars_colados: payload.chars_colados ?? 0,
+  });
 }
 
 export async function savePhotocam(payload: SavePhotocamPayload): Promise<void> {
-  // Store only metadata (skip base64 to avoid quota issues)
-  appendLog(`photocam_${payload.prova_id}`, {
+  await api.post('/antifraude/telemetria/photocam', {
     aluno_id: payload.aluno_id,
+    prova_id: payload.prova_id,
     questao_id: payload.questao_id,
-    timestamp: payload.timestamp,
+    timestamp: toEpochMs(payload.timestamp),
     horario: payload.horario,
+    imagem_base64: payload.imagem_base64,
   });
 }
 
 export async function saveScreenshot(payload: SaveScreenshotPayload): Promise<void> {
-  appendLog(`screenshot_${payload.prova_id}`, {
+  await api.post('/antifraude/telemetria/screenshot', {
     aluno_id: payload.aluno_id,
+    prova_id: payload.prova_id,
     questao_id: payload.questao_id,
-    timestamp: payload.timestamp,
+    timestamp: toEpochMs(payload.timestamp),
     horario: payload.horario,
+    screenshot_base64: payload.screenshot_base64,
   });
 }
 
 export async function getRelatorio(provaId: string): Promise<RelatorioProva> {
-  const respostas: SaveRespostaPayload[] = JSON.parse(
-    localStorage.getItem(`${PREFIX}respostas_${provaId}`) ?? '[]',
-  );
-
-  const alunosSet = new Set(respostas.map((r) => r.aluno_id));
-
-  // Detect suspicious jumps: version where delta > 300 chars in one save
-  const alertas = respostas
-    .filter((r, i, arr) => {
-      const prev = arr.slice(0, i).filter((p) => p.aluno_id === r.aluno_id && p.questao_id === r.questao_id).pop();
-      if (!prev) return false;
-      const delta = Math.abs(r.conteudo.length - prev.conteudo.length);
-      return delta > 300;
-    })
-    .map((r) => ({
-      alunoId: r.aluno_id,
-      questaoId: r.questao_id,
-      tipo: 'Salto de caracteres',
-      detalhe: `Variação de mais de 300 caracteres entre versões`,
-      timestamp: r.timestamp,
-    }));
-
-  return { provaId, totalAlunos: alunosSet.size, alertas };
+  const { data } = await api.get<RelatorioProva>(`/antifraude/relatorio/${provaId}`);
+  return data;
 }

@@ -20,6 +20,7 @@ import ProfessorRelatorio from '@/pages/professor/RelatorioPage';
 
 import AlunoDashboard from '@/pages/aluno/DashboardPage';
 import AlunoTurmas from '@/pages/aluno/TurmasPage';
+import AlunoProvas from '@/pages/aluno/ProvasPage';
 import AlunoProva from '@/pages/aluno/ProvaPage';
 import AlunoNotas from '@/pages/aluno/NotasPage';
 
@@ -71,6 +72,7 @@ export default function App() {
           >
             <Route index element={<AlunoDashboard />} />
             <Route path="turmas" element={<AlunoTurmas />} />
+            <Route path="provas" element={<AlunoProvas />} />
             <Route path="prova/:id" element={<AlunoProva />} />
             <Route path="notas" element={<AlunoNotas />} />
           </Route>

@@ -7,5 +7,6 @@ export class Questao {
     public readonly pontuacao: number,
     public readonly ordem: number,
     public readonly createdAt: Date,
+    public readonly opcoes: string[] | null = null,
   ) {}
 }

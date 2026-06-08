@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { BookMarked, FileText, GraduationCap, ArrowRight } from 'lucide-react';
+import { BookMarked, FileText, GraduationCap, ClipboardList, ArrowRight } from 'lucide-react';
 import { listEnrollments } from '@/api/enrollments';
 import { listClasses } from '@/api/classes';
 import { listGrades } from '@/api/grades';
+import { listProvasByAluno } from '@/api/provas';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,12 +18,20 @@ export default function AlunoDashboard() {
   const { data: enrollments, isLoading } = useQuery({ queryKey: ['enrollments'], queryFn: listEnrollments });
   const { data: classes } = useQuery({ queryKey: ['classes'], queryFn: listClasses });
   const { data: grades } = useQuery({ queryKey: ['grades'], queryFn: listGrades });
+  const { data: provas } = useQuery({
+    queryKey: ['provas-aluno', user?.id],
+    queryFn: () => listProvasByAluno(user!.id),
+    enabled: !!user?.id,
+  });
 
   const myEnrollments = enrollments?.filter((e) => e.studentId === user?.id) ?? [];
   const myGrades = grades?.filter((g) => myEnrollments.some((e) => e.id === g.enrollmentId)) ?? [];
   const avgGrade = myGrades.length
     ? (myGrades.reduce((s, g) => s + g.grade, 0) / myGrades.length).toFixed(1)
     : '—';
+  const now = new Date();
+  const provasAtivas =
+    provas?.filter((p) => now >= new Date(p.dataInicio) && now < new Date(p.dataFim)).length ?? 0;
 
   if (isLoading) return <PageSpinner />;
 
@@ -33,7 +42,7 @@ export default function AlunoDashboard() {
         <p className="mt-1 text-sm text-gray-500">Acompanhe seu desempenho acadêmico</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -73,6 +82,21 @@ export default function AlunoDashboard() {
             </div>
           </CardContent>
         </Card>
+        <Link to="/aluno/provas" className="block">
+          <Card className="transition-colors hover:border-blue-300">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50">
+                  <ClipboardList className="h-5 w-5 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Provas Disponíveis</p>
+                  <p className="text-2xl font-bold">{provasAtivas}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <Card>
