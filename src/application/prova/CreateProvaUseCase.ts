@@ -19,7 +19,8 @@ export class CreateProvaUseCase {
 
   async execute(input: CreateProvaInput): Promise<Prova> {
     const professor = await this.userRepository.findById(input.professorId);
-    if (!professor || professor.role !== 'teacher') throw new Error('Apenas professores podem criar provas');
+    if (!professor || professor.role !== 'teacher')
+      throw new Error('Apenas professores podem criar provas');
 
     const prova = new Prova(
       randomUUID(),

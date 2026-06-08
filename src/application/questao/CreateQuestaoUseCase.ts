@@ -11,6 +11,7 @@ interface CreateQuestaoInput {
   tipo: 'dissertativa' | 'multipla_escolha';
   pontuacao: number;
   ordem: number;
+  opcoes?: string[];
 }
 
 export class CreateQuestaoUseCase {
@@ -22,11 +23,15 @@ export class CreateQuestaoUseCase {
 
   async execute(input: CreateQuestaoInput): Promise<Questao> {
     const professor = await this.userRepository.findById(input.professorId);
-    if (!professor || professor.role !== 'teacher') throw new Error('Apenas professores podem criar questões');
+    if (!professor || professor.role !== 'teacher')
+      throw new Error('Apenas professores podem criar questões');
 
     const prova = await this.provaRepository.findById(input.provaId);
     if (!prova) throw new Error('Prova não encontrada');
-    if (prova.professorId !== input.professorId) throw new Error('Sem permissão para editar esta prova');
+    if (prova.professorId !== input.professorId)
+      throw new Error('Sem permissão para editar esta prova');
+
+    const opcoes = input.tipo === 'multipla_escolha' && input.opcoes?.length ? input.opcoes : null;
 
     const questao = new Questao(
       randomUUID(),
@@ -36,6 +41,7 @@ export class CreateQuestaoUseCase {
       input.pontuacao,
       input.ordem,
       new Date(),
+      opcoes,
     );
 
     await this.questaoRepository.create(questao);

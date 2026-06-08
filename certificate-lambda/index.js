@@ -5,7 +5,16 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
 exports.handler = async (event) => {
-  const { certificateId, studentName, className, enrollmentId, s3Key, s3Bucket } = event;
+  const {
+    certificateId,
+    studentName,
+    className,
+    classDescription,
+    grade,
+    enrollmentId,
+    s3Key,
+    s3Bucket,
+  } = event;
 
   const issuedAt = new Date().toLocaleDateString('pt-BR', {
     year: 'numeric',
@@ -13,7 +22,14 @@ exports.handler = async (event) => {
     day: 'numeric',
   });
 
-  const html = buildCertificateHtml({ studentName, className, issuedAt, certificateId });
+  const html = buildCertificateHtml({
+    studentName,
+    className,
+    classDescription,
+    grade,
+    issuedAt,
+    certificateId,
+  });
 
   await s3.send(
     new PutObjectCommand({
@@ -27,7 +43,21 @@ exports.handler = async (event) => {
   return { statusCode: 200, certificateId, enrollmentId, s3Key };
 };
 
-function buildCertificateHtml({ studentName, className, issuedAt, certificateId }) {
+function buildCertificateHtml({
+  studentName,
+  className,
+  classDescription,
+  grade,
+  issuedAt,
+  certificateId,
+}) {
+  const hasGrade = grade !== null && grade !== undefined && !Number.isNaN(Number(grade));
+  const gradeHtml = hasGrade
+    ? `<div class="grade">Aproveitamento final: <strong>${Number(grade).toFixed(1)}</strong></div>`
+    : '';
+  const descHtml = classDescription
+    ? `<div class="course-desc">${escapeHtml(classDescription)}</div>`
+    : '';
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -116,8 +146,27 @@ function buildCertificateHtml({ studentName, className, issuedAt, certificateId 
       font-size: 26px;
       color: #2c5282;
       font-weight: bold;
-      margin-bottom: 36px;
+      margin-bottom: 10px;
     }
+    .course-desc {
+      font-size: 14px;
+      color: #718096;
+      font-style: italic;
+      max-width: 600px;
+      margin: 0 auto 18px;
+      line-height: 1.5;
+    }
+    .grade {
+      display: inline-block;
+      font-size: 15px;
+      color: #1a365d;
+      background: rgba(200, 169, 81, 0.12);
+      border: 1px solid #c8a951;
+      border-radius: 999px;
+      padding: 6px 18px;
+      margin-bottom: 30px;
+    }
+    .grade strong { color: #2c5282; }
     .date {
       font-size: 14px;
       color: #718096;
@@ -159,8 +208,10 @@ function buildCertificateHtml({ studentName, className, issuedAt, certificateId 
     <div class="certifies">Certificamos que</div>
     <div class="student-name">${escapeHtml(studentName)}</div>
 
-    <div class="completed">concluiu com êxito o curso</div>
+    <div class="completed">concluiu com êxito a disciplina</div>
     <div class="course-name">${escapeHtml(className)}</div>
+    ${descHtml}
+    ${gradeHtml}
 
     <div class="date">Emitido em ${issuedAt} pela Plataforma Klass</div>
 

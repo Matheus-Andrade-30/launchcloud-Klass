@@ -1,0 +1,10 @@
+{
+  "name": "klass-certificate-lambda",
+  "version": "1.0.0",
+  "description": "Lambda que gera o HTML do certificado personalizado e grava no S3",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1053.0"
+  }
+}

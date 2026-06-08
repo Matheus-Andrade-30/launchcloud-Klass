@@ -11,5 +11,8 @@ export const pool = mysql.createPool({
   database: process.env.DB_NAME!,
   waitForConnections: true,
   connectionLimit: 10,
+  // mysql2 retorna colunas DECIMAL como string por padrao; isso quebra o front
+  // (ex.: grade.grade.toFixed). Forcamos numero para bater com os tipos.
+  decimalNumbers: true,
   ssl: { rejectUnauthorized: false },
 });

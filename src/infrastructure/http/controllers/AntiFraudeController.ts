@@ -24,13 +24,39 @@ export class AntiFraudeController {
 
   async saveResposta(req: Request, res: Response): Promise<void> {
     try {
-      const { aluno_id, prova_id, questao_id, timestamp, horario, conteudo } = req.body;
-      if (!aluno_id || !prova_id || !questao_id || !timestamp || !horario || conteudo === undefined) {
-        res.status(400).json({ error: 'Campos obrigatórios: aluno_id, prova_id, questao_id, timestamp, horario, conteudo' });
+      const {
+        aluno_id,
+        prova_id,
+        questao_id,
+        timestamp,
+        horario,
+        conteudo,
+        colado,
+        chars_colados,
+      } = req.body;
+      if (
+        !aluno_id ||
+        !prova_id ||
+        !questao_id ||
+        !timestamp ||
+        !horario ||
+        conteudo === undefined
+      ) {
+        res.status(400).json({
+          error:
+            'Campos obrigatórios: aluno_id, prova_id, questao_id, timestamp, horario, conteudo',
+        });
         return;
       }
       const result = await this.saveRespostaVersaoUseCase.execute({
-        alunoId: aluno_id, provaId: prova_id, questaoId: questao_id, timestamp, horario, conteudo,
+        alunoId: aluno_id,
+        provaId: prova_id,
+        questaoId: questao_id,
+        timestamp,
+        horario,
+        conteudo,
+        colado: colado === true,
+        charsColados: Number(chars_colados) || 0,
       });
       res.status(201).json(result);
     } catch (err: any) {
@@ -42,11 +68,19 @@ export class AntiFraudeController {
     try {
       const { aluno_id, prova_id, questao_id, timestamp, horario, imagem_base64 } = req.body;
       if (!aluno_id || !prova_id || !questao_id || !timestamp || !horario || !imagem_base64) {
-        res.status(400).json({ error: 'Campos obrigatórios: aluno_id, prova_id, questao_id, timestamp, horario, imagem_base64' });
+        res.status(400).json({
+          error:
+            'Campos obrigatórios: aluno_id, prova_id, questao_id, timestamp, horario, imagem_base64',
+        });
         return;
       }
       const result = await this.savePhotocamUseCase.execute({
-        alunoId: aluno_id, provaId: prova_id, questaoId: questao_id, timestamp, horario, imagemBase64: imagem_base64,
+        alunoId: aluno_id,
+        provaId: prova_id,
+        questaoId: questao_id,
+        timestamp,
+        horario,
+        imagemBase64: imagem_base64,
       });
       res.status(201).json(result);
     } catch (err: any) {
@@ -58,11 +92,19 @@ export class AntiFraudeController {
     try {
       const { aluno_id, prova_id, questao_id, timestamp, horario, screenshot_base64 } = req.body;
       if (!aluno_id || !prova_id || !questao_id || !timestamp || !horario || !screenshot_base64) {
-        res.status(400).json({ error: 'Campos obrigatórios: aluno_id, prova_id, questao_id, timestamp, horario, screenshot_base64' });
+        res.status(400).json({
+          error:
+            'Campos obrigatórios: aluno_id, prova_id, questao_id, timestamp, horario, screenshot_base64',
+        });
         return;
       }
       const result = await this.saveScreenshotUseCase.execute({
-        alunoId: aluno_id, provaId: prova_id, questaoId: questao_id, timestamp, horario, screenshotBase64: screenshot_base64,
+        alunoId: aluno_id,
+        provaId: prova_id,
+        questaoId: questao_id,
+        timestamp,
+        horario,
+        screenshotBase64: screenshot_base64,
       });
       res.status(201).json(result);
     } catch (err: any) {
